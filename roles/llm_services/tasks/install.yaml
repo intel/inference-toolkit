@@ -28,7 +28,9 @@
 # the user-workload Prometheus run outside it: they reach the scheduler (ext_proc
 # 9002, metrics 9090) and vLLM (8000) in plain TCP, which ztunnel would refuse. Only
 # those ports accept plain TCP, and the NetworkPolicy lets in only those two
-# namespaces. Meshed traffic arrives on HBONE (15008).
+# namespaces, plus the kubelet's probes on vLLM's port. Meshed traffic arrives on HBONE
+# (15008); ztunnel lets the probes in as plain TCP and refuses anything else that is
+# not mTLS, so the scheduler's probe port (9003) is open to any source.
 - name: "llm_services | Open the model ports to the OpenShift AI gateway and Prometheus"
   kubernetes.core.k8s:
     state: present
@@ -67,7 +69,7 @@
             app.kubernetes.io/part-of: llminferenceservice
         policyTypes: [Ingress]
         ingress:
-          - ports: [{port: 15008, protocol: TCP}]
+          - ports: [{port: 15008, protocol: TCP}, {port: 9003, protocol: TCP}]
           - from:
               - namespaceSelector:
                   matchLabels:
@@ -76,6 +78,8 @@
                   matchLabels:
                     kubernetes.io/metadata.name: "{{ kserve_openshift_gateway_namespace | default('openshift-ingress') }}"
             ports: [{port: 8000, protocol: TCP}, {port: 9002, protocol: TCP}]
+          - from: [{ipBlock: {cidr: "{{ __llm_probe_address }}"}}]
+            ports: [{port: 8000, protocol: TCP}]
           - from:
               - namespaceSelector:
                   matchLabels:

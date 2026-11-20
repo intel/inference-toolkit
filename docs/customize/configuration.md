@@ -202,7 +202,7 @@ kubernetes_cpu_policy: "nri-balloons"   # nri-balloons | kubelet-static | best-e
 > This must match the value the cluster was **installed** with. It decides both how
 > kubelet is configured (Toolkit Manager repo) and how model manifests are rendered (this
 > repo). Changing it on an existing cluster requires re-running
-> `./es_auto_installer.sh install kubernetes` so kubelet is reconfigured.
+> `./toolkit_manager.sh install kubernetes` so kubelet is reconfigured.
 
 Tuning, per policy:
 
@@ -293,6 +293,8 @@ Disabling NFD means those affinity rules cannot be satisfied.
 | `MM_INFERENCE_GATEWAY_SVC_NS` | Namespace of that gateway's Service, which LiteLLM calls (default: `MM_INFERENCE_GATEWAY_NS`, else `envoy-gateway-system`) |
 | `MM_CPU_POLICY` | Override `kubernetes_cpu_policy` for one invocation |
 | `MM_NRI_ENABLED` | Set `false` to skip NRI CPU-pinning annotations |
+| `MM_PREFLIGHT` | `warn` — report a placement shortfall (CPU or GPU pre-flight) but proceed |
+| `MM_SKIP_PREFLIGHT` | `1` — skip the placement pre-flight entirely |
 | `MM_NRI_PREFLIGHT` | `warn` — report a capacity shortfall but proceed |
 | `MM_NRI_SKIP_PREFLIGHT` | `1` — skip the capacity check entirely |
 | `MM_FORCE_REDEPLOY` | `1` — re-apply a model even if its rendered spec is unchanged |

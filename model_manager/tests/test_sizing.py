@@ -343,7 +343,7 @@ def _sized(*argv, catalog=None):
     o = cli.parse_args(["deploy", *argv])
     cat = Catalog(catalog or cli.MM_DIR / "models.yaml")
     m = config.resolve(cat, o.positional[1] if len(o.positional) > 1 else "", o)
-    cli_args, _ = cli._engine_cli_args(o)
+    cli_args, _ = cli._engine_cli_args(o, 1, [])
     s = cli._apply_sizing(m, cat, o, cli_args, cli._tensor_parallel(m, cli_args, o.env))
     doc = yaml.safe_load(renderer.manifest(m, cat, o, {}, m.cpu, cli_args))
     main = doc["spec"]["template"]["containers"][0]
@@ -635,7 +635,7 @@ def _inputs(catalog, *argv):
     o = cli.parse_args(["deploy", "m", *argv])
     cat = Catalog(catalog)
     m = config.resolve(cat, "m", o)
-    cli_args, _ = cli._engine_cli_args(o)
+    cli_args, _ = cli._engine_cli_args(o, 1, [])
     return cli._sizing_inputs(m, renderer.effective_args(m, cli_args, o.env), cli._tensor_parallel(m, cli_args, o.env))
 
 
@@ -701,7 +701,7 @@ def test_openshift_additional_args_are_sized(hub, monkeypatch):
                         "VLLM_ADDITIONAL_ARGS=--dtype float32 --tensor-parallel-size 2"])
     cat = Catalog(cli.MM_DIR / "models.yaml")
     m = config.resolve(cat, "", o)
-    cli_args, _ = cli._engine_cli_args(o)
+    cli_args, _ = cli._engine_cli_args(o, 1, [])
     tp = cli._tensor_parallel(m, cli_args, o.env)
     s = cli._apply_sizing(m, cat, o, cli_args, tp)
     assert tp == 2 and round(s.weights_gib, 2) == 29.92  # bf16 weights served as float32

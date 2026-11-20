@@ -275,6 +275,7 @@ class Model:
     max_model_len: str = ""                   # sized --max-model-len
     sizing: dict = field(default_factory=dict)  # memory: auto's inputs + sized context, kept as CR annotations
     replicas: str = "1"
+    gpus: str = ""
     min_replicas: str = ""
     max_replicas: str = ""
     scale_target: str = ""                    # per-replica threshold of the runtime's signal
@@ -308,6 +309,16 @@ class Model:
     @property
     def cat(self) -> dict:
         return pick(pick(self.rt, "categories", {}), self.category or "llm", {})
+
+    @property
+    def gpu(self) -> bool:
+        """A device: gpu runtime (vllm-cuda): accelerator limits, /dev/shm, toleration, no CPU pinning."""
+        return text(pick(self.rt, "device", "cpu")) == "gpu"
+
+    @property
+    def accel_resource(self) -> str:
+        """The extended resource a GPU runtime's pod requests: its runtime's accelerator_resource."""
+        return text(pick(self.rt, "accelerator_resource"))
 
     def check(self) -> None:
         """Reject names/ids that are not safe to embed in manifests and the download script."""
@@ -363,6 +374,8 @@ def resolve(catalog: Catalog, target: str, o: Any) -> Model:
     if m.kv_streams and not (is_uint(m.kv_streams) and int(m.kv_streams) > 0):
         abort(f"Model '{m.name}' kv_streams must be a positive integer, got: {m.kv_streams}")
     m.replicas = o.replicas or m.replicas
+    if m.gpu:
+        m.gpus = o.gpus or o.tp or m.gpus or text(pick(defaults, "gpus", 1))
     m.node = o.node or m.node
     if o.routing:
         m.routing = o.routing
@@ -388,7 +401,8 @@ def _from_catalog(catalog: Catalog, name: str, o: Any) -> Model:
               "as a block scalar.")
     m = Model(name=name, namespace=text(pick(e, "namespace", catalog.namespace)), kind=text(pick(e, "kind")),
               model_id=text(pick(e, "model_id")), draft_model_id=text(pick(e, "draft_model_id")),
-              cpu=text(pick(e, "cpu")), memory=text(pick(e, "memory")), kv_streams=text(pick(e, "kv_streams")),
+              cpu=text(pick(e, "cpu")), memory=text(pick(e, "memory")), gpus=text(pick(e, "gpus")),
+              kv_streams=text(pick(e, "kv_streams")),
               replicas=text(pick(e, "replicas", catalog.replicas)), category=text(pick(e, "category")),
               image=text(pick(e, "image")), node=text(pick(e, "node")), routing=text(pick(e, "routing")),
               chat_template=text(pick(e, "chat_template")).rstrip("\n"),  # as legacy $(jq) did
@@ -496,7 +510,9 @@ def _select_image(catalog: Catalog, m: Model, o: Any) -> None:
 def _repo_roots() -> list[Path]:
     """Where to look for solution configs: MM_GLOBAL_CONFIG_SEARCH, the enclosing repo, sibling checkouts."""
     roots = [Path(p) for p in (os.environ.get("MM_GLOBAL_CONFIG_SEARCH") or "").split(":") if p]
-    roots += [d for d in (MM_DIR, *list(MM_DIR.parents)[:-1]) if (d / "es_auto_installer.sh").is_file()][:1]
+    # toolkit_manager.sh, or es_auto_installer.sh (its former name) in an older checkout.
+    roots += [d for d in (MM_DIR, *list(MM_DIR.parents)[:-1])
+              if any((d / n).is_file() for n in ("toolkit_manager.sh", "es_auto_installer.sh"))][:1]
     return roots + sorted(p for p in MM_DIR.parent.parent.glob("*ai-solutions*") if p.is_dir())
 
 

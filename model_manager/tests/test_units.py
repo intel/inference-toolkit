@@ -26,6 +26,15 @@ def fresh_nri_reads():
     nri_policy.clear_cache()
 
 
+_REAL_HF_JSON = config._hf_json
+
+
+@pytest.fixture(autouse=True)
+def offline_hub(monkeypatch):
+    """Tests stay offline: deploy reads HuggingFace metadata for its memory checks."""
+    monkeypatch.setattr(config, "_hf_json", lambda url, proxy, token: {})
+
+
 @pytest.fixture
 def kubectl(monkeypatch):
     """Record kubectl calls as (argv, stdin); every call succeeds with empty output (a Job reads as complete)."""
@@ -1671,6 +1680,8 @@ def test_one_hub_call_per_repo_serves_the_gated_check_and_the_size(kubectl, monk
 
 
 def test_hub_token_goes_to_curl_on_stdin_never_in_its_arguments(monkeypatch):
+    monkeypatch.setattr(config, "_hf_json", _REAL_HF_JSON)  # the curl call itself, with subprocess faked below
+    _REAL_HF_JSON.cache_clear()
     seen = []
     monkeypatch.setattr(config.subprocess, "run", lambda cmd, **kw: seen.append((cmd, kw.get("input"))) or
                         subprocess.CompletedProcess(cmd, 0, "{}", ""))

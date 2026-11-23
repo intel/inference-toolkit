@@ -53,7 +53,8 @@ apply. Set `MM_FORCE_REDEPLOY=1` to force a full re-apply regardless.
 | `--server <name>` | Which engine serves the model: `vllm` (default), `openvino`, `vllm-cuda` or `vllm-xpu` (alias: `--runtime`) |
 | `--server-version <v>` | Which version of that engine to use — see [below](#pick-an-engine-and-version) |
 | `--cpu N` | Number of CPU cores to give the model. `--cpu auto` sizes it to a NUMA node — see [CPU auto](../customize/catalog.md#cpu-auto) |
-| `--memory NGi` | Memory limit, e.g. `32Gi` |
+| `--memory NGi` | Memory limit, e.g. `32Gi`. `--memory auto` sizes a vLLM chat or vision-language model's memory and KV cache from its config, and is the default with `--hfid` — see [Memory & KV-Cache Sizing](../reference/memory_sizing.md) |
+| `--kv-streams N` | With `--memory auto`: how many requests of the full context the KV cache holds at once (default: 1) — see [Streams](../reference/memory_sizing.md#sizing-vs-vllm-serving) |
 | `--replicas N` | How many copies to run (default: 1); a fixed count, which turns autoscaling off |
 | `--min-replicas N` / `--max-replicas N` | Autoscale between N copies (default min: 1); a max above the min turns it on. Needs `keda_enabled: true` and KServe 0.21 (`envoy_gateway_upgrade: true`); not on OpenShift yet |
 | `--scale-target N` | Load per copy that triggers a scale-up: waiting requests for vLLM (default: 2), in-flight requests for OpenVINO (default: 4) |
@@ -221,11 +222,13 @@ redirected to `/tmp` via the runtime's env (`HOME`, `XDG_CACHE_HOME`,
 
 You don't need a catalog entry to try a model. Point `--hfid` at any Hugging Face repo
 and model-manager infers the workload type (chat model, embedding, or reranker) from
-the model's metadata:
+the model's metadata. Without `--memory`, a vLLM chat model's memory and KV cache are sized
+from its config ([how](../reference/memory_sizing.md)), as with `--memory auto`; when they
+cannot be, or for embeddings, rerankers and OpenVINO, the category memory is used:
 
 ```bash
-./model-manager deploy --hfid Qwen/Qwen3-0.6B --cpu 8 --memory 16Gi --wait
-./model-manager deploy --hfid meta-llama/Llama-3.2-3B-Instruct --cpu 16 --memory 32Gi --wait
+./model-manager deploy --hfid Qwen/Qwen3-0.6B --cpu 8 --wait
+./model-manager deploy --hfid meta-llama/Llama-3.2-3B-Instruct --cpu 16 --dry-run   # shows the sized memory
 ./model-manager deploy --hfid BAAI/bge-base-en-v1.5 --cpu 4 --memory 8Gi --wait
 ```
 
@@ -241,6 +244,10 @@ export HF_TOKEN="hf_your_token_here"
 The download Job receives the token automatically. Public models work without it. A
 gated model **without** a token fails fast with a clear "model is gated — set
 HF_TOKEN" message, and during auto-deploy is reported without aborting the install.
+
+`--memory auto` needs the token too: it reads the model's `config.json`, which is gated, and
+stops the deploy without it (`--hfid` without `--memory` warns and uses the category memory). See
+[Memory & KV-Cache Sizing](../reference/memory_sizing.md#when-a-model-cannot-be-sized).
 
 ## Models with custom code (`--trust-remote-code`)
 

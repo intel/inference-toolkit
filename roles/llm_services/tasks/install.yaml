@@ -24,6 +24,7 @@
           istio.io/dataplane-mode: "ambient"
   when: istio_enabled | default(false) | bool
 
+# istio-cni SNATs the kubelet's probes to HOST_PROBE_SNAT_IP (preflight checks it is set).
 - name: "llm_services | Read the kubelet probes' source address from the IstioCNI"
   kubernetes.core.k8s_info:
     api_version: sailoperator.io/v1
@@ -34,14 +35,9 @@
     - istio_enabled | default(false) | bool
     - cluster_distribution | default('kubernetes') == 'openshift'
 
-- name: "llm_services | Check the kubelet probes' source address"
-  ansible.builtin.assert:
-    that: __llm_probe_address | length > 0
-    fail_msg: >-
-      The IstioCNI 'default' does not set spec.values.cni.env.HOST_PROBE_SNAT_IP, which
-      the models' NetworkPolicy needs to admit the kubelet's probes. Set it as the
-      platform's OpenShift guide describes (docs/deploy/openshift.md, step 3).
-    quiet: true
+- name: "llm_services | Note the kubelet probes' source address"
+  ansible.builtin.set_fact:
+    __llm_probe_address: "{{ __llm_istio_cni.resources | map(attribute='spec.values.cni.env.HOST_PROBE_SNAT_IP') | first }}/32"
   when:
     - istio_enabled | default(false) | bool
     - cluster_distribution | default('kubernetes') == 'openshift'
@@ -100,7 +96,7 @@
                   matchLabels:
                     kubernetes.io/metadata.name: "{{ kserve_openshift_gateway_namespace | default('openshift-ingress') }}"
             ports: [{port: 8000, protocol: TCP}, {port: 9002, protocol: TCP}]
-          - from: [{ipBlock: {cidr: "{{ __llm_probe_address }}/32"}}]
+          - from: [{ipBlock: {cidr: "{{ __llm_probe_address }}"}}]
             ports: [{port: 8000, protocol: TCP}]
           - from:
               - namespaceSelector:

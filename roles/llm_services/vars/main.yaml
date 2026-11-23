@@ -59,9 +59,3 @@ __llm_mm_mount: /opt/model-manager
 __llm_mm_sa: model-manager
 # Pinned UID/GID for the deploy Jobs' pods; restricted-v2 assigns them on OpenShift.
 __llm_mm_job_ids: "{{ {} if __llm_mm_openshift | bool else {'runAsUser': 1000, 'runAsGroup': 1000} }}"
-# The kubelet's probes reach the pod from the address istio-cni SNATs them to:
-# HOST_PROBE_SNAT_IP on the admin's IstioCNI, read by tasks/install.yaml. vLLM's probes
-# call the port the gateway calls (8000), so it admits them.
-__llm_probe_address: >-
-  {{ __llm_istio_cni.resources | default([])
-     | map(attribute='spec.values.cni.env.HOST_PROBE_SNAT_IP', default='') | first | default('') }}

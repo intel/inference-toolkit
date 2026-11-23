@@ -24,13 +24,35 @@
           istio.io/dataplane-mode: "ambient"
   when: istio_enabled | default(false) | bool
 
+- name: "llm_services | Read the kubelet probes' source address from the IstioCNI"
+  kubernetes.core.k8s_info:
+    api_version: sailoperator.io/v1
+    kind: IstioCNI
+    name: default
+  register: __llm_istio_cni
+  when:
+    - istio_enabled | default(false) | bool
+    - cluster_distribution | default('kubernetes') == 'openshift'
+
+- name: "llm_services | Check the kubelet probes' source address"
+  ansible.builtin.assert:
+    that: __llm_probe_address | length > 0
+    fail_msg: >-
+      The IstioCNI 'default' does not set spec.values.cni.env.HOST_PROBE_SNAT_IP, which
+      the models' NetworkPolicy needs to admit the kubelet's probes. Set it as the
+      platform's OpenShift guide describes (docs/deploy/openshift.md, step 3).
+    quiet: true
+  when:
+    - istio_enabled | default(false) | bool
+    - cluster_distribution | default('kubernetes') == 'openshift'
+
 # On OpenShift the mesh is STRICT (a prerequisite), but the OpenShift AI gateway and
 # the user-workload Prometheus run outside it: they reach the scheduler (ext_proc
 # 9002, metrics 9090) and vLLM (8000) in plain TCP, which ztunnel would refuse. Only
 # those ports accept plain TCP, and the NetworkPolicy lets in only the gateway's and
-# the monitoring namespaces, plus the kubelet's probes on vLLM's port. Meshed traffic arrives on HBONE
-# (15008); ztunnel lets the probes in as plain TCP and refuses anything else that is
-# not mTLS, so the scheduler's probe port (9003) is open to any source.
+# the monitoring namespaces, plus the kubelet's probes on vLLM's port. Meshed traffic
+# arrives on HBONE (15008); ztunnel lets the probes in as plain TCP and refuses anything
+# else that is not mTLS, so the scheduler's probe port (9003) is open to any source.
 - name: "llm_services | Open the model ports to the OpenShift AI gateway and Prometheus"
   kubernetes.core.k8s:
     state: present
@@ -78,7 +100,7 @@
                   matchLabels:
                     kubernetes.io/metadata.name: "{{ kserve_openshift_gateway_namespace | default('openshift-ingress') }}"
             ports: [{port: 8000, protocol: TCP}, {port: 9002, protocol: TCP}]
-          - from: [{ipBlock: {cidr: "{{ __llm_probe_address }}"}}]
+          - from: [{ipBlock: {cidr: "{{ __llm_probe_address }}/32"}}]
             ports: [{port: 8000, protocol: TCP}]
           - from:
               - namespaceSelector:

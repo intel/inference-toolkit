@@ -244,9 +244,12 @@
     _mm_strict: true
   when: guardrails_enabled | default((auth_type | default('jwt')) == 'litellm_vkey') | bool
 
+- name: "llm_services | Is Headlamp installed (Models page)"
+  ansible.builtin.include_tasks: ui_deploy_check.yaml
+
 - name: "llm_services | Deploy from Headlamp (model-manager Jobs)"
   ansible.builtin.include_tasks: ui_deploy.yaml
-  when: llm_services_ui_deploy | bool
+  when: __llm_ui_deploy | bool
 
 - name: "llm_services | Deploy default models"
   include_tasks: deploy_models.yaml

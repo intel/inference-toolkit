@@ -92,9 +92,12 @@
     or ((kubernetes_cpu_policy | default('nri-balloons')) == 'kubelet-static'
         and (_llm_kubelet_cpu_policy.stdout | default('') | trim) not in ['static', ''])
 
+- name: "llm_services | Is Headlamp installed (Models page)"
+  ansible.builtin.include_tasks: ui_deploy_check.yaml
+
 # Deploy from Headlamp: the template is admitted, a tampered copy is not.
 - name: "llm_services | Headlamp deploy Jobs are locked to the template"
-  when: llm_services_ui_deploy | bool
+  when: __llm_ui_deploy | bool
   block:
     - name: "llm_services | Read the Job template"
       kubernetes.core.k8s_info:

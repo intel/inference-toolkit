@@ -5,7 +5,7 @@ a model serving, use **Customize** to add models and tune the engines, then look
 things up in **Reference**.
 
 > New here? The three-step quick start is in the [project README](../README.md#quick-start).
-> [Toolkit Manager](https://github.com/intel/enterprise-ai-solutions) installs and operates this toolkit — install Toolkit Manager first.
+> [Toolkit Manager](https://github.com/intel/toolkit-manager) installs and operates this toolkit — install Toolkit Manager first.
 
 ## Deploy
 
@@ -24,7 +24,7 @@ Add models, choose engines and versions, and change any setting.
 | Guide | What it covers |
 |-------|----------------|
 | [Model Catalog](customize/catalog.md) | The `models.yaml` catalog — every field, and auto-deploy at install time |
-| [Runtimes](customize/runtimes.md) | vLLM and OpenVINO — versions, images, and per-workload defaults |
+| [Runtimes](customize/runtimes.md) | vLLM (CPU, NVIDIA and Intel GPU) and OpenVINO — versions, images, and per-workload defaults |
 | [Configuration](customize/configuration.md) | Every option in `config.yaml`, plus the `MM_*` environment variables |
 | [Guardrails](customize/guardrails.md) | Content-safety screening of LiteLLM requests with a guard model (Qwen3Guard) |
 | [Hybrid Router](customize/hybrid-router.md) | Complexity-tier and bandit routing behind one virtual model in LiteLLM |

@@ -1,29 +1,31 @@
 # Troubleshooting
 
-Symptoms you are most likely to hit, and what to do about them.
+Symptoms you are most likely to hit, and what to do about them. Run the commands from
+the Toolkit Manager folder with `KUBECONFIG` pointing at the cluster
+(`export KUBECONFIG=$(pwd)/env/<env>/kubeconfig.yaml`).
 
 ## Deploy and storage
 
 | Symptom | Likely cause / fix |
 |---------|--------------------|
-| `PVC 'model-store' ... not ready (Pending)` | Normal on `WaitForFirstConsumer` storage — it binds once the pod schedules. A `Pending` PVC on `Immediate` storage means a provisioner problem. |
+| `PVC 'model-store' ... not ready (phase: Pending ...)` | A provisioner problem on `Immediate` storage. On `WaitForFirstConsumer` storage a `Pending` PVC is expected and not an error: model-manager prints `Storage ready ... binds on first consumer` and goes on. |
 | Download Job `Permission denied` | The downloader runs non-root; ensure the PVC is writable. The Job sets `HOME` and the cache paths to writable locations. |
 | `ImagePullBackOff` on serving pods | Registry rate limit or proxy issue — configure a pull-through mirror, or pre-pull the runtime image on the node. |
 | Model "gated" error | Set `HF_TOKEN` and re-run `./model-manager deploy <name> --wait`. See [Gated models](deploy/deploy_models.md#gated-models-hugging-face-token). |
 | Model stuck not-Ready | `kubectl logs -n llm-inference -l app.kubernetes.io/name=<name> -f`. CPU model load plus warmup takes minutes — this is often just slow, not broken. |
-| Download fails behind a corporate proxy | Set `http_proxy` / `https_proxy` / `no_proxy` in the catalog's `network:` section, or via `MM_HTTP_PROXY` / `MM_HTTPS_PROXY` / `MM_NO_PROXY`. |
+| Download fails behind a corporate proxy | Set `http_proxy` / `https_proxy` / `no_proxy` in the `network:` section of `env/<env>/models.yaml`. Without them, model-manager uses `MM_HTTP_PROXY` / `MM_HTTPS_PROXY` / `MM_NO_PROXY` (the install sets these from the platform proxy settings), then the standard `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`. |
 | `ovms --pull` aborts: *"unsupported for OpenVINO models"* | `weight_format` was set for a model already published as OpenVINO IR. Leave it unset for `OpenVINO/*` repos — see [Runtimes](customize/runtimes.md#weight_format--only-for-raw-hugging-face-repos). |
 
 ## CPU pinning and scheduling
 
 | Symptom | Likely cause / fix |
 |---------|--------------------|
-| Deploy blocked by the NRI pre-flight capacity check | The requested `cpu` × `replicas` doesn't fit the balloon pool. Lower the request, or override with `MM_NRI_PREFLIGHT=warn` / `MM_NRI_SKIP_PREFLIGHT=1`. |
-| Re-running `deploy` or `install` aborts on pre-flight for an already-deployed model | Expected before the spec-diff no-op landed. An unchanged model is now skipped without re-running pre-flight. Use `MM_FORCE_REDEPLOY=1` to force a full re-apply. |
+| Deploy blocked by the NRI pre-flight capacity check (`NRI pre-flight failed: …`) | The requested `cpu` × `replicas` doesn't fit the balloon pool. Lower `--cpu` or `--replicas`, undeploy a model, or add a node. To deploy anyway, set `MM_NRI_PREFLIGHT=warn` (report, don't block) or `MM_NRI_SKIP_PREFLIGHT=1` (skip this check). |
+| Re-running `deploy` or `install` for an already-deployed model | An unchanged model is skipped, without the pre-flight check. If a re-deploy that changes the model stops at the pre-flight, see the row above. `MM_FORCE_REDEPLOY=1` forces a full re-apply. |
 | Deploy stops with `cpu: auto — only N free CPUs per NUMA node` | Under `nri-balloons`, no schedulable node has that many free cores on one NUMA node, or no node carries the `nri.intel.com/max-tp` label. Undeploy a model, add a node, or pass `--cpu N`. See [CPU auto](customize/catalog.md#cpu-auto). |
 | Pod rejected with `SMTAlignmentError` | Under `kubelet-static` with `full-pcpus-only`, `cpu` must be a multiple of the SMT width. On an SMT-disabled cluster set `mm_kubelet_threads_per_core: 1`. |
 | Pod annotated `cpu-policy.model-manager.io/reason: nri-resolution-failed` | NRI was expected but couldn't be resolved, so the pod fell back to `best-effort`. It still serves, without exclusive cores. Check the NRI plugin is running on the node. |
-| Model pod stays `Pending` with no node available | Likely the `require_amx: true` affinity with no AMX-labelled node. Check NFD is running: `kubectl get pods -n node-feature-discovery`, then `kubectl get nodes -L feature.node.kubernetes.io/cpu-security.amx.enabled`. |
+| Model pod stays `Pending` with no node available | Check why: `kubectl describe pod -n llm-inference -l app.kubernetes.io/name=<name>`. Common causes: the catalog's `require_amx: true` with no AMX node (check NFD runs, `kubectl get pods -n node-feature-discovery`, then `kubectl get nodes -L feature.node.kubernetes.io/cpu-cpuid.AMXBF16`), `--node` naming a node that is full or tainted, or not enough free CPU or memory. |
 
 Detail → [CPU Pinning & NUMA](reference/cpu_pinning.md).
 
@@ -31,12 +33,13 @@ Detail → [CPU Pinning & NUMA](reference/cpu_pinning.md).
 
 | Symptom | Likely cause / fix |
 |---------|--------------------|
-| `404` from `inference.<domain>` in `litellm_vkey` mode | Nothing is bound to that host in this mode — use `litellm.<domain>`. See [Accessing Models](deploy/accessing_models.md). |
+| `404` from `inference.<domain>` in `litellm_vkey` mode | Nothing is bound to that host in this mode. Use `litellm.<domain>`. See [Accessing Models](deploy/accessing_models.md). |
+| `404` from `litellm.<domain>` for a path such as `/key/generate` or `/v1/rerank` | The public LiteLLM address answers only `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/models` and `/health/liveliness`. Use a port-forward for the admin API. |
 | `401` on every request in `jwt` mode | Missing, malformed, or expired JWT. Tokens last 15 minutes by default — re-run `source .../get-keycloak-token.sh`, or pass `--lifespan 3600`. |
-| `401` in `litellm_vkey` mode with a key that used to work | The virtual key expired, was revoked, or exceeded its budget. List keys with `/key/list?return_full_object=true`. |
+| `401` in `litellm_vkey` mode with a key that used to work | The virtual key expired, was revoked, or exceeded its budget. List keys through a port-forward (the key API is not on the public address): see [Virtual keys](deploy/accessing_models.md#virtual-keys). |
 | `401` for one model only, in `litellm_vkey` mode | The key's model allow-list doesn't include it. Mint a key with that model in `models`. |
 | TLS certificate warnings from `curl` or a browser | Self-signed CA. Use `--cacert env/<env>/logs/ai-solutions-ca.crt`, or import that CA into your trust store. |
-| The LiteLLM UI redirects to `http://` and fails | The trailing slash is required: `https://litellm.<domain>/ui/`, not `/ui`. |
+| The LiteLLM UI redirects to `http://` and fails | The trailing slash is required: `https://litellm-ui.<domain>/ui/` (path mode: `https://<domain>/litellm/ui/`), not `/ui`. |
 | Every LiteLLM request returns `500` "Blocked by the content-safety guardrail: the guard model backend is unreachable" | The guard model is not Ready yet, or LiteLLM's outbound URL check refused its host. See [Guardrails → Everything Is Blocked](customize/guardrails.md#everything-is-blocked). |
 | Model deployed, but requests return "model not found" | The `model` field must match the deploy **name**, not the Hugging Face `model_id`. List what's registered with `GET /v1/models`. |
 
@@ -49,7 +52,7 @@ Detail → [CPU Pinning & NUMA](reference/cpu_pinning.md).
 | Install stops at "does not allowlist the guard host" | The install upgrades a LiteLLM release whose config lacks the guard host, so the upgrade did not reach the release the guardrail is registered with: check the Helm upgrade in the install log, and that `guardrail_litellm_namespace` is `litellm_namespace` — see [Guardrails](customize/guardrails.md#outbound-url-allowlist). |
 | Install stops, or warns, that a model is "not found in the model catalog" | The name (the guard model `guardrail_model`, or one in `llm_services_autodeploy_models`) is neither in `env/<env>/models.yaml` nor in `model_manager/models.yaml`. Add an entry for it, or fix the name. A requested model only the shipped catalog has is deployed from it, with a "NOTICE: … not in …" line. |
 | An auto-deployed model failed but the install reported success | By design — the serving infrastructure is up and the failure is in the summary. Set `model_deploy_strict: true` to make it fatal. |
-| `--server-version` rejected for an OpenVINO or vllm-xpu model | Both are flat runtimes with no version axis. Only the CPU vLLM is versioned. |
+| `--server-version` rejected for an OpenVINO or vllm-xpu model | Both are flat runtimes with no version axis. Only `vllm` (CPU) and `vllm-cuda` are versioned. |
 | `--server-version` rejected for a vLLM model | The catalog's `servers:` block is an allow-list. Add the version there first — see [Model Catalog](customize/catalog.md#choose-which-server-and-version-a-model-may-use). |
 
 ## Getting more detail
@@ -75,4 +78,4 @@ kubectl get aigatewayroute -A          # ai_gateway_provider=envoy
 ```
 
 For cluster, storage, certificate, and DNS problems, see the
-[Toolkit Manager documentation](https://github.com/intel/enterprise-ai-solutions/blob/main/docs/README.md).
+[Toolkit Manager documentation](https://github.com/intel/toolkit-manager/blob/main/docs/README.md).

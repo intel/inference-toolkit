@@ -39,8 +39,10 @@ Model backend (the model's InferencePool, deployed with model-manager)
 Response flows back through the chain to the client
 ```
 
-The router runs on its own `semantic-router` gateway, so normal model traffic on the
-AI gateway never passes through the classifier. Using the router is a per-request
+The router runs on its own `semantic-router` gateway (a `Gateway` in the model namespace,
+`llm-inference` by default, with its own GatewayClass `semantic-router`), so normal model
+traffic on the AI gateway never passes through the classifier. LiteLLM sends the router the
+model name `auto` (`vllm_sr_router_trigger_model`), which tells it to classify the prompt. Using the router is a per-request
 choice: call the router's model name, or call a model directly to bypass it.
 
 With `auth_type: jwt` there is no LiteLLM in the path (`vllm_sr_expose: envoy`). The
@@ -90,22 +92,25 @@ The install will:
    `vllm-sr/auto`)
 
 `./toolkit_manager.sh validate inference` checks the router, the gateway, the
-`EnvoyPatchPolicy` and, with the dashboard on, its route and auth exemption.
+`EnvoyPatchPolicy`, the per-model routes and, with the dashboard on, its route and its
+gateway policy (the Keycloak sign-in, or the exemption when Keycloak is off).
 
 ### Verify
 
 Send a request through the router, on the LiteLLM API
 (`https://litellm.<base_domain_name>/v1/...`, or `https://<base_domain_name>/litellm/v1/...`
 with `routing_mode: path`; `DOMAIN` and `GATEWAY_IP` as in
-[Accessing Models](../deploy/accessing_models.md)):
+[Accessing Models](../deploy/accessing_models.md)). Use the router's model name,
+`vllm_sr_litellm_model_name`: `semantic-router` by default, as in these examples (use
+`vllm-sr/auto` with Intel® Agent Toolkit):
 
 ```bash
-curl -sk --noproxy '*' \
+curl -s --noproxy '*' --cacert env/<env>/logs/ai-solutions-ca.crt \
   --resolve "litellm.${DOMAIN}:443:${GATEWAY_IP}" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <LITELLM_KEY>" \
   -d '{
-    "model": "vllm-sr/auto",
+    "model": "semantic-router",
     "messages": [{"role": "user", "content": "write a hello world in python"}]
   }' \
   "https://litellm.${DOMAIN}/v1/chat/completions"
@@ -114,7 +119,7 @@ curl -sk --noproxy '*' \
 You can also call a model directly (bypasses routing):
 
 ```bash
-curl -sk --noproxy '*' \
+curl -s --noproxy '*' --cacert env/<env>/logs/ai-solutions-ca.crt \
   --resolve "litellm.${DOMAIN}:443:${GATEWAY_IP}" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <LITELLM_KEY>" \
@@ -136,8 +141,11 @@ https://vllm-sr.<base_domain_name>/
 ```
 
 The dashboard serves root paths (`/login`, `/api`, `/assets`, ...) and cannot
-run under a sub-path, so it keeps its own host with `routing_mode: path` as well. It has
-its own login, so its route is exempt from the gateway's Keycloak JWT policy. The router
+run under a sub-path, so it keeps its own host with `routing_mode: path` as well. Opening it
+takes two sign-ins: first Keycloak at the gateway (`vllm_sr_dashboard_sso`, on whenever
+Keycloak is; only members of `vllm_sr_dashboard_allowed_groups`, by default the platform
+admin group, get through), then the dashboard's own login. With Keycloak off, the route is
+exempt from the gateway's JWT policy and only the dashboard login remains. The router
 API itself is not exposed outside the cluster. With `vllm_sr_gateway_publish: false` (it
 follows the platform's gateway flag) the dashboard is deployed but not published; reach it
 with `kubectl -n vllm-semantic-router-system port-forward svc/semantic-router-dashboard 8700`.
@@ -173,13 +181,14 @@ kubectl -n vllm-semantic-router-system get secret vllm-sr-dashboard \
 
 1. Client sends `POST /v1/chat/completions` with the router's model name
 2. LiteLLM authenticates the request, starts a Langfuse trace, and forwards
-   to the `semantic-router` gateway
+   to the `semantic-router` gateway with the model name `auto`
 3. vLLM-SR runs semantic signal classification on the prompt
 4. The decision engine matches the prompt's embedding signals to a decision. The
    default configuration sends coding prompts to the coder models (`coding-route`),
    reasoning prompts to all models with reasoning on (`reasoning-route`) and everything
    else to all models (`default-route`), with `vllm_sr_default_model` as the default
-   model; add your own decisions (see [Routing Configuration](#routing-configuration))
+   model (it also serves coding prompts when no model has `coder` in its name); add your
+   own decisions (see [Routing Configuration](#routing-configuration))
 5. The gateway routes the request to the selected model's InferencePool
 6. The response flows back to the client
 
@@ -267,6 +276,8 @@ Set these in `env/<env>/config.inference.yaml`:
 | `vllm_sr_cache_backend` | Semantic cache backend: `memory` or `redis` |
 | `vllm_sr_image_tag` | Router image tag (empty = the chart's `appVersion`) |
 | `vllm_sr_dashboard_enabled` | Deploy the dashboard (default `false`) |
+| `vllm_sr_dashboard_sso` | Keycloak sign-in at the gateway before the dashboard (default: on when Keycloak is) |
+| `vllm_sr_dashboard_allowed_groups` | Keycloak groups the gateway admits to the dashboard (default: the platform admin group) |
 | `vllm_sr_dashboard_admin_email` | Dashboard login email (default `admin@<base_domain_name>`) |
 | `vllm_sr_dashboard_hostname` | Dashboard host (default `vllm-sr.<base_domain_name>`) |
 | `vllm_sr_gateway_publish` | Publish the dashboard on the platform gateway (default: the platform's gateway flag) |
@@ -288,10 +299,9 @@ The Helm release is upgraded in place and the router restarts when its config ch
 
 ## Onboarding a New Model
 
-1. Deploy the model with model-manager:
+1. Deploy the model with model-manager, from the Toolkit Manager directory:
 
    ```bash
-   cd model_manager
    ./model-manager deploy <model> --wait
    ```
 
@@ -311,11 +321,11 @@ and a matching decision as described in
 Send a prompt and check which model answered (the `model` field of the response):
 
 ```bash
-curl -sk --noproxy '*' \
+curl -s --noproxy '*' --cacert env/<env>/logs/ai-solutions-ca.crt \
   --resolve "litellm.${DOMAIN}:443:${GATEWAY_IP}" \
   -H "Authorization: Bearer <LITELLM_KEY>" \
   -H "Content-Type: application/json" \
-  -d '{"model": "vllm-sr/auto", "messages": [{"role": "user", "content": "write a python function to sort a list"}]}' \
+  -d '{"model": "semantic-router", "messages": [{"role": "user", "content": "write a python function to sort a list"}]}' \
   "https://litellm.${DOMAIN}/v1/chat/completions" | jq -r .model
 ```
 
@@ -378,7 +388,8 @@ kubectl exec -n litellm deploy/litellm -c litellm -- \
 
 **Dashboard login fails or the page does not load**
 
-Check the dashboard logs:
+If the Keycloak sign-in works but the gateway still refuses the page, your user is not in `vllm_sr_dashboard_allowed_groups`
+(by default the platform admin group). Otherwise check the dashboard logs:
 
 ```bash
 kubectl logs -n vllm-semantic-router-system deploy/semantic-router-dashboard

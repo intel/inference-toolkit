@@ -25,6 +25,8 @@ models:              # 2. The models you can deploy — one entry per model
 
 runtimes:            # 3. The engines themselves — images, versions, shared settings
   vllm: { ... }
+  vllm-cuda: { ... }
+  vllm-xpu: { ... }
   openvino: { ... }
 ```
 
@@ -34,10 +36,10 @@ What that gives you:
 |------------|-----------------------|
 | **One catalog** | List a model once; deploy it by name with `./model-manager deploy <name>` |
 | **Sensible defaults** | Only `name` and `model_id` are required — category, CPU, memory, and engine flags are filled in |
-| **Deliberate versioning** | Declare which engine versions a model may use; an untested version is refused, not silently deployed |
+| **Deliberate versioning** | Declare which engine versions a model may use (the `servers:` form); an untested version is refused, not silently deployed |
 | **Central, reusable settings** | Engine images and shared options live in one `runtimes:` block, reused across every model |
 | **Override anywhere** | Per-model `args`/`env`, or one-off `--cpu`/`--arg`/`--env` at deploy time — the CLI always wins |
-| **Auto-deploy** | Flag a model `autodeploy: true` to bring it up during install |
+| **Auto-deploy** | Flag a model `autodeploy: true` and set `llm_services_deploy_models: true` to bring it up during install |
 
 ## Global sections
 
@@ -50,7 +52,7 @@ Applied to every model that doesn't override them.
 | `namespace` | `llm-inference` | Target namespace for deployments |
 | `runtime` | `vllm` | Engine used when a model omits one |
 | `replicas` | `1` | Replica count |
-| `require_amx` | `true` | Only schedule model pods on nodes with Intel® AMX. Relies on the NFD labels; NFD comes from the core platform layer's `node_feature_discovery` |
+| `require_amx` | `true` | Only schedule CPU model pods on nodes with Intel® AMX. Relies on the NFD labels; NFD comes from the core platform layer's `node_feature_discovery`. GPU models ignore it, and a catalog without the line counts as `false` |
 
 ### `storage`
 
@@ -74,18 +76,20 @@ and re-run `install inference`.
 | Qwen3.6-35B-A3B | 72 GB |
 | Llama-3.1-70B-Instruct | 141 GB |
 
-- Downloads skip a repository's `original/` folder (the publisher's own copy of the weights,
+- vLLM downloads skip a repository's `original/` folder (the publisher's own copy of the weights,
   which vLLM does not load). For Meta's Llama models that halves the download.
-- Before a download, the Job checks the free space on the model store and fails at once,
-  naming the model, the space it needs and what is free, when it does not fit.
+- Before a vLLM download, the Job checks the free space on the model store and fails at once,
+  naming the model, the space it needs and what is free, when it does not fit. OpenVINO
+  downloads, and models whose size the Hub does not report, skip this check.
 - An existing PVC keeps its size unless its StorageClass allows volume expansion
   (`allowVolumeExpansion: true`); a size is never reduced. Otherwise the install prints that
   the new size applies to a new PVC only.
 
 ### `network`
 
-Used by the download Job when pulling from Hugging Face. Empty values inherit from the
-installer's environment.
+Used by the download Job when pulling from Hugging Face. An empty proxy value falls back
+to `MM_HTTP_PROXY` / `MM_HTTPS_PROXY` / `MM_NO_PROXY` (set by the install), then to
+`HTTP_PROXY` / `http_proxy` and the like.
 
 | Field | Meaning |
 |---|---|
@@ -108,17 +112,19 @@ models:
 
 | Field | Meaning |
 |---|---|
-| `name` | Deploy name, and the `model` id used in API requests |
+| `name` | Deploy name, and the `model` id used in API requests. Lower-case letters, digits and `-`, up to 63 characters |
 | `model_id` | The Hugging Face repo to pull weights from |
-| `category` | Workload class — `llm`, `embed`, `rerank`, or `vlm`. Drives default args, CPU, and memory |
+| `category` | Workload class — `llm`, `embed`, `rerank`, or `vlm`. Drives default args, CPU, and memory. Unset, it is guessed from the Hugging Face model card |
 | `cpu` / `memory` | Resource requests (default: from the category). `cpu: auto` sizes CPU to a NUMA node — see [below](#cpu-auto). `memory: auto` sizes a vLLM `llm` or `vlm` model's memory and KV cache from its Hugging Face config — see [Memory & KV-Cache Sizing](../reference/memory_sizing.md). A set value, or the category default, is used as is and checked to fit |
 | `kv_streams` | With `memory: auto`: how many requests of the full context the KV cache holds at once (default: 1, no upper limit; the pre-flight catches a value that doesn't fit). Not vLLM's `--max-num-seqs` — see [Streams](../reference/memory_sizing.md#sizing-vs-vllm-serving) |
+| `gpus` | GPUs per pod on a GPU runtime (`vllm-cuda`, `vllm-xpu`); also its default tensor-parallel size |
 | `replicas` | Replica count (default: 1) |
-| `autoscaling` | `{min_replicas, max_replicas, scale_target}`: autoscale with KEDA between the two counts (default min: 1), scaling up when the load per replica exceeds `scale_target`: waiting requests for vLLM (default: 2), in-flight requests for OpenVINO (default: 4). Replaces `replicas`. Needs `keda_enabled: true` and KServe 0.21 (`envoy_gateway_upgrade: true`). The signal and its default are set per runtime (`autoscaling` in `runtimes/<name>/values.yaml`) |
+| `autoscaling` | `{min_replicas, max_replicas, scale_target}`: autoscale with KEDA between the two counts (default min: 1), scaling up when the load per replica exceeds `scale_target`: waiting requests for vLLM (default: 2), in-flight requests for OpenVINO (default: 4). Replaces `replicas`. Needs `keda_enabled: true` and KServe 0.21 (`envoy_gateway_upgrade: true`), an `LLMInferenceService` model and plain Kubernetes (not OpenShift); `vllm-cuda` and `vllm-xpu` define no signal, so their models need a fixed `replicas`. The signal and its default are set per runtime (`autoscaling` in `runtimes/<name>/values.yaml`) |
 | `--tensor-parallel-size N` in `args` | Tensor parallelism — split the model across N NUMA nodes. Memory sizing, `cpu: auto`, the NRI balloon and the pre-flight all use it; `--tp N` overrides it for one deploy |
 | `namespace` | Target namespace (default: `llm-inference`) |
-| `node` | Pin to a specific node |
-| `routing` | `epp` or `direct` |
+| `node` | Pin to a specific node: a hard rule, so the pod stays `Pending` if that node has no room |
+| `routing` | `epp`, `aigateway`, or `direct`. Default: the runtime's (`epp`), or `direct` for `embed` / `rerank` |
+| `kind` | `LLMInferenceService` or `InferenceService`; normally taken from the runtime |
 | `image` | Override the runtime image entirely |
 | `args` | Extra engine args, appended after the category and version args |
 | `env` | Extra env vars, merged over the runtime env |
@@ -127,7 +133,8 @@ models:
 | `chat_template_file` | A Jinja file whose content is used as `chat_template`, so models share one template. See [below](#chat-templates) |
 | `draft_model_id` | Hugging Face repo of a speculative-decoding draft model (vLLM). See [below](#speculative-decoding) |
 
-Plus the server binding, described next.
+Plus the server binding, described next. There is no `tp` field: set tensor parallelism with
+`"--tensor-parallel-size", "N"` in `args`, or `--tp N` at deploy time.
 
 ## Choose which server and version a model may use
 
@@ -151,13 +158,14 @@ Two equivalent forms, depending on how much control you want:
 ```
 
 With the `servers:` form, a deploy that asks for a version *not* in the list is
-**rejected**, so nobody accidentally ships an untested combination. The shorthand form
-places no such restriction.
+**rejected**, and so is a `--server` the model does not list, so nobody accidentally ships an
+untested combination. The shorthand form places no such restriction: any version the
+runtime defines under `runtimes:` is accepted.
 
 Version selection precedence, highest first:
 
 ```
---server-version   >   the model's server_version:   >   the runtime's default_version
+--server-version   >   the model's version (servers default, or server_version)   >   the runtime's default_version
 ```
 
 Select at deploy time with `--server <engine> --server-version <v>`, and run variants
@@ -194,7 +202,8 @@ See [CPU Pinning & NUMA](../reference/cpu_pinning.md).
 
 ## Chat templates
 
-`chat_template` accepts either inline Jinja or an absolute path.
+`chat_template` accepts either inline Jinja or an absolute path. It applies to vLLM only; an
+OpenVINO model that sets one is refused.
 
 **Inline Jinja** (use a `|` block scalar for multi-line) is stored in a
 `<model>-chat-template` ConfigMap and mounted read-only at `/etc/chat-template`. It is
@@ -275,7 +284,7 @@ up serving infrastructure. Bringing a model up automatically takes **two** setti
      autodeploy: true
    ```
 
-2. Enable the auto-deploy phase in this repo's `config.yaml`, which ships **disabled**:
+2. Enable the auto-deploy phase in the environment's `env/<env>/config.inference.yaml` (seeded from this repo's `config.yaml`), which ships **disabled**:
 
    ```yaml
    llm_services_deploy_models: true
@@ -293,10 +302,12 @@ Once enabled, only models flagged `autodeploy: true` are deployed.
 > name in `llm_services_autodeploy_models` (Intel® Agent Toolkit sets its default model
 > there), and the guardrail's guard model (`guardrail_model`) whenever the guardrail is
 > on. The guard model deploys first, so models with `cpu: auto` size themselves around it.
-> They come from the same catalog. The environment copy is seeded once, at `init`, so an
+> They come from the same catalog, and a failure in either stops the install.
+> The environment copy is seeded once, at `init`, so an
 > environment created before a catalog update lacks the new entries: a requested model
 > missing there is taken from `model_manager/models.yaml` (the rest of
-> `env/<env>/models.yaml` still applies) and the install prints a notice. To customise
+> `env/<env>/models.yaml` still applies, and shipped `runtimes:` entries the copy lacks, such
+> as a newer server version, are added; env entries win) and the install prints a notice. To customise
 > such a model, copy its entry into `env/<env>/models.yaml`. See
 > [Configuration](configuration.md#llm-services-and-model-deployment).
 
@@ -307,7 +318,9 @@ deployed manually afterward. Set `model_deploy_strict: true` to make any auto-de
 failure fatal instead.
 
 To skip the deploy phase for a single run without editing config, use
-`./toolkit_manager.sh install inference --skip-models` (or `SKIP_MODEL_DEPLOYMENT=true`).
+`SKIP_MODEL_DEPLOYMENT=true ./toolkit_manager.sh install inference`. It skips every model
+deploy in that run, the guard model and requested models included, so with the guardrail on
+LiteLLM blocks requests until `./model-manager deploy qwen3guard --wait`.
 
 Extra flags can be appended to every auto-deploy invocation via `model_deploy_flags`,
 e.g. `"--wait-timeout 1800"` for large models.

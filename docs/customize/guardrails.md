@@ -19,8 +19,8 @@ The guard model is an ordinary catalog entry (`qwen3guard` in
 The guardrail's **identity is model-agnostic**: it is registered as `content_safety`
 whatever guard model is deployed. Swapping `guardrail_model` changes only the model behind
 it, never its name, so no registration is ever left stranded. The model actually in
-use is baked into the registered code and shown in the guardrail's description in the
-LiteLLM UI.
+use is baked into the registered code (`GUARD_MODEL`); the guardrail's description in the
+LiteLLM UI is fixed and does not name it.
 
 > **A blocked request is an error response.** LiteLLM returns **HTTP 500** with the block
 > reason in `error.message`, for example
@@ -83,8 +83,11 @@ guardrails_enabled: true   # default: true with auth_type: litellm_vkey
 
 The guardrail runs inside LiteLLM, so it screens only what passes through LiteLLM. It is
 on by default with `auth_type: litellm_vkey`, where every API request does. With
-`auth_type: jwt` clients call the models through the AI gateway directly, so it is off,
-also when LiteLLM is added with `litellm_enabled: true`.
+`auth_type: jwt` clients call the models through the AI gateway directly, so it is off by
+default, also when LiteLLM is added with `litellm_enabled: true`. To screen the LiteLLM
+traffic in that setup anyway, set both `litellm_enabled: true` and `guardrails_enabled: true`;
+requests that go to `inference.<domain>` are still not screened. After changing it, re-run
+`./toolkit_manager.sh install inference`.
 
 **Guard model:** `guardrail_model` (default `qwen3guard`) is the catalog name of the guard
 model. It selects the model the guardrail calls; the code template that parses its verdicts
@@ -160,24 +163,37 @@ config again and fails instead of registering a guardrail that would block every
 Edit the `qwen3guard` entry in [models.yaml](../../model_manager/models.yaml) (or in the
 environment's copy, `env/<env>/models.yaml`, which the install prefers):
 
+The shipped entry:
+
 ```yaml
   - name: qwen3guard
     model_id: Qwen/Qwen3Guard-Gen-0.6B
+    category: llm
+    runtime: vllm
+    server_version: "0.28.0"
     cpu: 8         # CPUs for the guard model
-    memory: 16Gi   # Memory
+    memory: 16Gi   # memory for the guard model
     args: [ "--block-size", "128", "--dtype", "bfloat16", "--max-num-seqs", "8", "--tensor-parallel-size", "1" ]
     env:
-      VLLM_CPU_KVCACHE_SPACE: "4"
+      VLLM_CPU_KVCACHE_SPACE: "4"   # KV cache in GiB
+      VLLM_CPU_SGL_KERNEL: "1"
+      VLLM_ALLOW_LONG_MAX_MODEL_LEN: "1"
+      HF_HUB_DISABLE_XET: "1"
+      USER: "vllm"
+      HOME: "/tmp"
+      XDG_CACHE_HOME: "/tmp/.cache"
+      VLLM_CACHE_ROOT: "/tmp/vllm"
 ```
 
-**8Gi is not enough** — the guard's four vLLM processes peak at
-~8.6 GiB (a 6.8 GiB worker holding the 4 GiB KV cache plus bf16 weights, a ~0.9 GiB API
-server, a ~0.7 GiB EngineCore), so an 8Gi limit OOM-kills the pod with exit code 137
-in a `CrashLoopBackOff`. Because the guardrail is fail-closed, a guard OOM blocks every
-LiteLLM request.
-Do *not* cut `VLLM_CPU_KVCACHE_SPACE` to fit instead: at 4 GiB it yields 37,376 tokens against
-a 32,768 context window, and halving it puts the cache below the guard's own window, so long
-prompts fail closed rather than being screened.
+`VLLM_CPU_KVCACHE_SPACE: "4"` gives the guard a 4 GiB KV cache (the memory vLLM keeps for the
+tokens it is working on), instead of the vLLM `llm` category's 8 GiB. Change it there.
+
+**8Gi of memory is not enough.** An 8Gi limit OOM-kills the pod (exit code 137, peak about
+8.6 GiB) and leaves it in `CrashLoopBackOff`. Because the guardrail is fail-closed, a guard OOM
+blocks every LiteLLM request.
+Do *not* shrink the KV cache below 4 GiB to make it fit: 4 GiB holds about 37,000 tokens,
+just above the guard's 32,768-token context window, and less than that means long prompts
+fail closed instead of being screened.
 
 ### Context window
 
@@ -236,8 +252,9 @@ a sandbox mistake cannot take the guardrail down.
 
 ### Prerequisites
 
-- `auth_type: litellm_vkey` in `env/<env>/config.inference.yaml`; LiteLLM holds the
-  guardrail registration
+- LiteLLM installed, which holds the guardrail registration: `auth_type: litellm_vkey` in
+  `env/<env>/config.inference.yaml` (the guardrail is then on by default), or
+  `litellm_enabled: true` plus `guardrails_enabled: true`
 - The guard model in the model catalog — `env/<env>/models.yaml` when it exists, or the
   shipped [models.yaml](../../model_manager/models.yaml) when that copy (seeded at `init`)
   lacks the `qwen3guard` entry; a name in neither fails the install
@@ -256,10 +273,9 @@ install: with the guardrail fail-closed, a missing guard model would block every
 
 ### Redeploy the Guardrail Only
 
-Redeploy the guard model:
+Redeploy the guard model, from the Toolkit Manager checkout:
 
 ```bash
-cd model_manager
 ./model-manager deploy qwen3guard --wait
 ```
 
@@ -363,8 +379,9 @@ curl -s http://localhost:4000/v1/chat/completions \
 
 ### Test Fail-Closed
 
+From the Toolkit Manager checkout:
+
 ```bash
-cd model_manager
 ./model-manager undeploy qwen3guard --wait
 # any chat request -> "...the guard model backend is unreachable..."
 ./model-manager deploy qwen3guard --wait

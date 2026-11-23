@@ -2,18 +2,21 @@
 
 ## What is it?
 
-A **runtime** is the engine that actually serves a model. The CPU engines are vLLM and OpenVINO; GPU engines
-(`vllm-cuda`, `vllm-xpu`) are described below:
+A **runtime** is the engine that actually serves a model. Four are supported; pick one
+per model in the catalog, or at deploy time with `--server <name>` (alias `--runtime`):
 
 | Runtime | Use case | Key optimizations |
 |---------|----------|-------------------|
-| **vLLM** | LLMs, VLMs | NUMA auto-bind, AMX kernels, prefix caching, chunked prefill |
-| **OpenVINO (OVMS)** | Embedding, reranking, INT4/INT8 LLMs | OpenVINO IR, MediaPipe graph |
+| **vLLM** (`vllm`, CPU) | LLMs, VLMs, embedding, reranking | NUMA auto-bind, AMX kernels, prefix caching, chunked prefill |
+| **vLLM on NVIDIA GPU** (`vllm-cuda`) | LLMs, VLMs | GPU tensor parallelism |
+| **vLLM on Intel Arc Pro B-Series** (`vllm-xpu`) | LLMs | Intel XPU build of vLLM, non-root |
+| **OpenVINO (OVMS)** (`openvino`) | INT4/INT8 LLMs | OpenVINO IR, MediaPipe graph |
 
 Each engine is configured **once**, in the `runtimes:` section at the bottom of
-`models.yaml`. That is where you define the available versions and their container
-images, the settings shared by every model on that engine, and the per-workload
-(category) defaults — CPU, memory, engine flags, and env vars. Keeping it in one place
+`models.yaml` (edit the environment's copy, `env/<env>/models.yaml`). That is where you
+define the available versions and their container images, the settings shared by every
+model on that engine, and the per-workload (category) defaults — CPU, memory, engine
+flags, and env vars. Keeping it in one place
 means the full picture of what a server runs with is easy to see and to change.
 
 Models then opt into a runtime and version through their
@@ -25,14 +28,21 @@ Every level overrides the one before it:
 
 ```
 env   = runtime common env  +  category env  +  version env delta  +  per-model env  +  --env
-args  = category args       +  version args delta  +  per-model args  +  --arg
+args  = category args       +  version args delta  +  per-model args  +  --arg  (+ --tp)
 image = the selected version's image                 (or per-model `image:`)
 ```
+
+When the same flag appears twice in `args`, the last one wins, so a per-model or `--arg`
+value replaces the category's.
+
+Two additions sit outside those levels: a model with `--trust-remote-code` starts from
+`HF_HUB_OFFLINE=1` (lowest; the download already fetched its code), and OpenVINO pods also get
+the proxy settings and, when a Hugging Face token is set, `HF_TOKEN` from the `hf-token` Secret.
 
 Version selection, highest precedence first:
 
 ```
---server-version   >   the model's server_version:   >   the runtime's default_version
+--server-version   >   the model's version (servers default, or server_version)   >   the runtime's default_version
 ```
 
 ## vLLM
@@ -48,8 +58,10 @@ runtimes:
     versions:
       "0.24.0":
         image: "docker.io/vllm/vllm-openai-cpu:v0.24.0"
-      "0.28.0":                  # only models that pin it use it (qwen3-6-35b-a3b)
+      "0.28.0":                  # the tuned CPU models pin it (server_version)
         image: "docker.io/vllm/vllm-openai-cpu:v0.28.0"
+      "0.33.0":                  # opt-in only (--server-version 0.33.0), not yet validated
+        image: "docker.io/vllm/vllm-openai-cpu:v0.33.0"
       "0.19.1":
         image: "docker.io/vllm/vllm-openai-cpu:v0.19.1"
         # optional env:/args: DELTAS on top of the common env and category args
@@ -61,7 +73,9 @@ runtimes:
 ```
 
 **Adding a version:** copy an existing entry, change the key and `image`, deploy a model
-against it with `--server-version`, then promote it by moving `default_version`.
+against it with `--server-version` (a model using the `servers:` form must list the version
+first; `--as <name>` keeps the current deployment running), then promote it by moving
+`default_version`.
 
 > [!WARNING]
 > Per-version `args:` deltas must suit the models that will use them. MoE-only flags
@@ -85,7 +99,10 @@ merged in at load time. `models.yaml` wins on any key clash.
 ```yaml
 device: cpu
 kind: LLMInferenceService
-routing: epp
+routing: epp                 # embed/rerank models use direct instead
+autoscaling:                 # KEDA signal: waiting requests per replica
+  query: 'sum(vllm:num_requests_waiting{namespace="$namespace",model="$model"})'
+  scale_target: 2
 ```
 
 ### vLLM on NVIDIA GPU (`vllm-cuda`)
@@ -102,6 +119,8 @@ accelerator_resource: nvidia.com/gpu        # extended resource the pod requests
 accelerator_toleration_key: nvidia.com/gpu  # taint GPU nodes commonly carry (NoSchedule)
 shm_size: 10Gi                              # /dev/shm for NCCL tensor parallelism
 ```
+
+`vllm-cuda` defines no autoscaling signal, so its models run with a fixed `replicas`.
 
 A runtime for another accelerator uses the same keys with that accelerator's image and
 resource, for example `vllm-xpu` below with `gpu.intel.com/xe` from the Intel GPU device plugin. See
@@ -152,11 +171,13 @@ A model sets `gpus` (per pod; also the default `--tensor-parallel-size`):
   stack is in the image. A node needs a kernel and firmware recent enough for the card, and the
   [Intel GPU device plugin](https://github.com/intel/intel-device-plugins-for-kubernetes) so it
   advertises `gpu.intel.com/xe` (see
-  [enterprise-ai-solutions#134](https://github.com/intel/enterprise-ai-solutions/pull/134)).
+  [toolkit-manager#134](https://github.com/intel/toolkit-manager/pull/134)).
 - **Where it deploys.** The pod requests `gpu.intel.com/xe`; the GPU pre-flight refuses the
   deploy when no Ready node advertises it. This works on mixed NVIDIA and Intel clusters.
 - **Remote code is per model.** The category args do not set `--trust-remote-code`; add it to a
   model's `args` only where the model needs it.
+- **Fixed replicas.** Like `vllm-cuda`, it defines no autoscaling signal.
+- **Not on OpenShift.** Its own `container` is refused there, as for OpenVINO: OpenShift AI's template starts vLLM itself.
 - **Single-GPU catalog models.** The shipped models use one GPU. Tensor parallelism (`gpus` > 1)
   needs oneCCL's `pidfd_getfd`, which the default seccomp profile may block on Arc Pro B70.
 
@@ -197,6 +218,10 @@ A runtime without `container` runs KServe's default vLLM command. The download j
 writes the servable and its `config_all.json` to the model's folder, which KServe mounts
 read-only at `/mnt/models`.
 
+Because of that custom `container`, OpenVINO models are refused on OpenShift (OpenShift
+AI's `LLMInferenceService` template starts vLLM itself), and so is an OpenVINO model that
+sets `chat_template` / `chat_template_file`, which are vLLM flags.
+
 ### `weight_format` — only for raw Hugging Face repos
 
 `weight_format` is a **conversion** knob for `ovms --pull`, set per category. Use it
@@ -219,8 +244,13 @@ The runtime's `kind` decides what `model-manager` creates:
 
 | Runtime | Object | Template |
 |---|---|---|
-| vLLM | `LLMInferenceService` | `model_manager/templates/llm-inference-service.yaml` |
-| OpenVINO | `LLMInferenceService` | the same template, with the runtime's `container` |
-| A runtime with `kind: InferenceService` | `InferenceService` | `model_manager/templates/inference-service.yaml`, with the `ClusterServingRuntime` under `model_manager/runtimes/<name>/` |
+| `vllm`, `vllm-cuda`, `vllm-xpu` | `LLMInferenceService` | `model_manager/templates/llm-inference-service.yaml` |
+| `openvino` | `LLMInferenceService` | the same template, with the runtime's `container` |
+| A runtime with `kind: InferenceService` | `InferenceService` | `model_manager/templates/inference-service.yaml` |
 
-A model whose runtime changes kind replaces its old object on the next deploy (or undeploy).
+All shipped runtimes use `LLMInferenceService`. For a runtime with
+`kind: InferenceService`, `model-manager` installs its `ClusterServingRuntime` on first use
+from `model_manager/runtimes/<name>/serving-runtime.yaml` (or `runtime.yaml`, or the file
+named by `serving_runtime_manifest`), and updates it when the image changes.
+
+A model that moves from an `InferenceService` (created by model-manager) to an `LLMInferenceService` runtime replaces its old object on the next deploy (or undeploy). The other direction is not handled: undeploy the model before moving it to an `InferenceService` runtime.

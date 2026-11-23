@@ -6,9 +6,16 @@ OpenAI-compatible endpoint. It exposes two lifecycle commands — **`deploy`** a
 serving objects are standard Kubernetes CRDs.
 
 > [!IMPORTANT]
-> Run it from the **Toolkit Manager repo root** as `./model-manager` (a thin wrapper pointing at
-> `ext/enterprise.ai-inference/model_manager/`). It operates against a **running cluster**
-> Toolkit Manager installed — see [Quick Start](../../README.md#quick-start).
+> Run it from the **Toolkit Manager folder** as `./model-manager`. That wrapper runs
+> `ext/enterprise.ai-inference/model_manager/model-manager` with your environment's
+> settings: the cluster (`env/<env>/kubeconfig.yaml`), `global_config.yaml`,
+> `config.inference.yaml` and the catalog `models.yaml`. It works on a **running cluster**
+> that Toolkit Manager installed; see [Quick Start](../../README.md#quick-start).
+>
+> **Which environment:** with one environment under `env/` it is used automatically; with
+> several, the wrapper asks. Set `TKM_ENV=<name>` to choose without a prompt, for example
+> `TKM_ENV=prod ./model-manager list`. (`--env` is something else: it sets an environment
+> variable inside the model's container.)
 
 It needs `kubectl`, `curl`, and **Python 3.9 or newer with PyYAML**. The installer's `.venv`
 is picked up automatically (as is any active virtualenv); otherwise install the dependencies
@@ -58,15 +65,16 @@ apply. Set `MM_FORCE_REDEPLOY=1` to force a full re-apply regardless.
 | `--replicas N` | How many copies to run (default: 1); a fixed count, which turns autoscaling off |
 | `--min-replicas N` / `--max-replicas N` | Autoscale between N copies (default min: 1); a max above the min turns it on. Needs `keda_enabled: true` and KServe 0.21 (`envoy_gateway_upgrade: true`); not on OpenShift yet |
 | `--scale-target N` | Load per copy that triggers a scale-up: waiting requests for vLLM (default: 2), in-flight requests for OpenVINO (default: 4) |
-| `--tp N` | Split one model across N CPU sockets for more throughput (advanced); on a GPU engine, across N GPUs, which also sets `--gpus` |
+| `--tp N` | Split one model across N NUMA nodes (one per tensor-parallel rank) for more throughput (advanced); on a GPU engine, across N GPUs, which also sets `--gpus` |
 | `--gpus N` | GPUs per pod for a GPU engine (`vllm-cuda`, `vllm-xpu`); also the default `--tp` — see [below](#deploy-on-gpu-nodes) |
 | `--category <cat>` | Force the workload type: `llm`, `embed`, `rerank`, or `vlm` |
 | `--node <name>` | Pin the model to a specific cluster node |
 | `--cpu-policy <p>` | Override the CPU-pinning policy for this model: `nri-balloons`, `kubelet-static`, or `best-effort`. Must match how the cluster was installed — see [CPU Pinning & NUMA](../reference/cpu_pinning.md) |
-| `--routing <mode>` | How requests reach the model: `epp` or `direct` (advanced) |
-| `--env KEY=VAL` | Set an environment variable on the pod (repeatable) |
+| `--routing <mode>` | How requests reach the model: `epp`, `aigateway` or `direct` (advanced) |
+| `--env KEY=VAL` | Set an environment variable in the model's container (repeatable) |
 | `--arg "--flag=val"` | Pass an extra engine flag, e.g. a vLLM option (repeatable) |
-| `--wait` / `--wait-timeout N` | Wait until the model is ready before returning (default: 900s) |
+| `--label KEY=VAL` | Add a label to the serving object, for example to mark who deployed it (repeatable) |
+| `--wait` / `--wait-timeout N` | Wait until the model is ready before returning (default: 900s; `vllm-xpu`: 3600s). `undeploy --wait` waits until its pods are gone (default: 180s) |
 | `--dry-run` | Render and show what would be deployed, without changing anything |
 
 Run `./model-manager --help` for the authoritative list.
@@ -130,7 +138,7 @@ What `vllm-cuda` changes in the rendered manifest, relative to CPU `vllm`:
 A GPU model deploys on any cluster whose nodes advertise its runtime's
 `accelerator_resource`, rack-scale or not; there is no switch to turn GPU
 deploys on. Before downloading weights, each new replica needs a Ready node, not
-cordoned or tainted against the pod, with at least `gpus` free `nvidia.com/gpu`,
+cordoned or tainted against the pod, with at least `gpus` free units of that resource (`nvidia.com/gpu`, `gpu.intel.com/xe`),
 counting what running pods already hold (a pod's GPUs cannot span nodes).
 Otherwise the deploy stops: on a CPU-only cluster, or when a GPU node has not
 joined the cluster or its device plugin is not ready yet. It also stops when
@@ -196,6 +204,8 @@ routed through the AI Gateway, and registered with LiteLLM when `auth_type` is
 | `nemotron-3-5-lightning-30b-a3b-cuda` | nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16 | 1 | |
 | `nemotron-3-super-120b-a12b-cuda` | nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8 | 4 | Hopper or Blackwell. On B200/B300 the model card fits it on one GPU: `--gpus 1` |
 | `nemotron-3-ultra-550b-a55b-cuda` | nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4 | 8 | NVFP4: Blackwell only (B200, B300) |
+| `vllm-xpu-llama-3-1-8b` | meta-llama/Llama-3.1-8B-Instruct | 1 | Intel Arc Pro B-Series (`vllm-xpu`). Gated: needs `HF_TOKEN` |
+| `vllm-xpu-gpt-oss-20b` | openai/gpt-oss-20b | 1 | Intel Arc Pro B-Series (`vllm-xpu`) |
 
 The Nemotron models are reasoning models (`--reasoning-parser nemotron_v3`) with
 tool calling (`--tool-call-parser qwen3_coder`), using the flags from their model
@@ -242,8 +252,8 @@ export HF_TOKEN="hf_your_token_here"
 ```
 
 The download Job receives the token automatically. Public models work without it. A
-gated model **without** a token fails fast with a clear "model is gated — set
-HF_TOKEN" message, and during auto-deploy is reported without aborting the install.
+gated model **without** a token fails fast with "Model '<repo>' is gated. Set
+HF_TOKEN with an authorized token.", and during auto-deploy is reported without aborting the install.
 
 `--memory auto` needs the token too: it reads the model's `config.json`, which is gated, and
 stops the deploy without it (`--hfid` without `--memory` warns and uses the category memory). See
@@ -274,6 +284,7 @@ the models are standard Kubernetes objects:
 
 ```bash
 # See what's currently serving
+./model-manager list --deployed
 kubectl get llminferenceservices,inferenceservices -n llm-inference
 
 # Change the number of replicas of a fixed-count model (an autoscaled one rejects
@@ -287,8 +298,8 @@ kubectl get scaledobject,hpa -n llm-inference
 # Follow a model's logs
 kubectl logs -n llm-inference -l app.kubernetes.io/name=<name> -f
 
-# List the model names in the catalog
-yq '.models[].name' env/<env>/models.yaml
+# List the model names in the catalog (no cluster needed)
+./model-manager list --catalog
 ```
 
 ## How a deploy works

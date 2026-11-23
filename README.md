@@ -1,7 +1,7 @@
 # Intel® Inference Toolkit
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-[![Installed and operated by: Toolkit Manager](https://img.shields.io/badge/Installed%20and%20operated%20by-Toolkit%20Manager-0068B5)](https://github.com/intel/enterprise-ai-solutions)
+[![Installed and operated by: Toolkit Manager](https://img.shields.io/badge/Installed%20and%20operated%20by-Toolkit%20Manager-0068B5)](https://github.com/intel/toolkit-manager)
 [![Platform: Intel® Xeon](https://img.shields.io/badge/Platform-Intel%C2%AE%20Xeon%C2%AE-0068B5)](https://www.intel.com/xeon)
 [![Serving: KServe](https://img.shields.io/badge/Serving-KServe-326CE5)](https://kserve.github.io/website/)
 [![Runtimes: vLLM · OVMS](https://img.shields.io/badge/Runtimes-vLLM%20%C2%B7%20OVMS-purple)](https://vllm.ai)
@@ -13,10 +13,10 @@
 
 > [!IMPORTANT]
 > **This repository is not used on its own.**
-> [**Toolkit Manager**](https://github.com/intel/enterprise-ai-solutions)
+> [**Toolkit Manager**](https://github.com/intel/toolkit-manager)
 > installs and operates it. Toolkit Manager clones this repository to
 > `ext/enterprise.ai-inference/` and brings up the Kubernetes cluster and the services
-> (cert-manager, Istio, MetalLB, Envoy Gateway, PostgreSQL, Keycloak, MinIO, observability)
+> (cert-manager, Istio, MetalLB, Envoy Gateway, PostgreSQL, Keycloak, SeaweedFS, observability)
 > this toolkit depends on.
 > Every command below runs from the **Toolkit Manager repo root**, not from here.
 
@@ -51,33 +51,40 @@ An inference request enters through the **LLM gateway**, which authenticates and
 **Stands up model serving on a freshly prepared machine, then serves an LLM.** In three steps you'll install Intel® Inference Toolkit, deploy a model, and see it answer.
 
 > [!NOTE]
-> **Prerequisite:** Toolkit Manager installs and operates this toolkit. `toolkit_manager.sh` is
-> its installer, and it clones this repository into `ext/enterprise.ai-inference/`. Clone the
-> [**Toolkit Manager**](https://github.com/intel/enterprise-ai-solutions)
-> repo, prep the machine, and create an environment, then run every command below from its root:
+> **Before you start:** Toolkit Manager installs and operates this toolkit. Its installer,
+> `toolkit_manager.sh`, clones this repository into `ext/enterprise.ai-inference/`. Get
+> Toolkit Manager, prepare the machine, and create an environment, then run every command
+> below from the Toolkit Manager folder:
 >
 > ```bash
-> git clone https://github.com/intel/enterprise-ai-solutions.git
-> cd enterprise-ai-solutions
-> ./toolkit_manager.sh configure && ./toolkit_manager.sh init local
+> git clone https://github.com/intel/toolkit-manager.git
+> cd toolkit-manager
+> ./toolkit_manager.sh configure        # one-time machine prep; answer y to the prompt
+> ./toolkit_manager.sh init inference   # creates env/local/ and clones this repo into ext/
 > ```
 >
-> Intel® Inference Toolkit needs the cluster, gateway, auth, and storage Toolkit Manager
-> provides — the `install inference` step below brings those up with it. Full list →
-> [Toolkit Manager prerequisites](https://github.com/intel/enterprise-ai-solutions/blob/main/docs/quickstart/prerequisites.md).
+> Intel® Inference Toolkit needs the cluster, gateway, sign-in and storage that Toolkit
+> Manager provides. The `install inference` step below brings those up with it. Hardware
+> and software requirements:
+> [Toolkit Manager prerequisites](https://github.com/intel/toolkit-manager/blob/main/docs/quickstart/prerequisites.md).
 
 ### Step 1 — Install the inference stack
 
 Deploys KServe, the ServingRuntimes, the AI gateway, the Keycloak realm and client, and — with `auth_type: litellm_vkey` or `litellm_enabled: true` — LiteLLM and Langfuse. No models are deployed yet.
 
 ```bash
-./toolkit_manager.sh install inference
+./toolkit_manager.sh install inference      # allow up to an hour on a first install
 
 export KUBECONFIG=$(pwd)/env/local/kubeconfig.yaml
-kubectl get pods -n kserve   # controller should be Running
+kubectl get pods -n kserve                  # the KServe controller shows Running
 ```
 
-Settings for this toolkit live in `config.yaml` at this repo's root. Toolkit Manager loads that file when it installs. See [Configuration](docs/customize/configuration.md) for every option, including the `envoy` / `agentgateway` choice and the cluster CPU-pinning policy.
+A successful run ends with an `INSTALLATION COMPLETE` banner.
+
+This toolkit's settings live in `env/local/config.inference.yaml`. `init` copies it from
+this repo's [`config.yaml`](config.yaml), and the install reads your copy. Edit it, then
+run `install inference` again. See [Configuration](docs/customize/configuration.md) for every
+option, including the `envoy` / `agentgateway` choice and the cluster CPU-pinning policy.
 
 ### Step 2 — Deploy a model
 
@@ -93,31 +100,41 @@ Or skip the catalog and deploy any Hugging Face model directly:
 ./model-manager deploy --hfid Qwen/Qwen3-0.6B --cpu 8 --wait   # memory sized from the model
 ```
 
+`--wait` blocks until the model is ready (up to 15 minutes by default). Run it again any
+time: an unchanged model is left as it is.
+
 > [!IMPORTANT]
 > Gated models (Llama, Mistral, Gemma) require a free [Hugging Face token](https://huggingface.co/settings/tokens).
-> Export it as `HF_TOKEN=hf_...` before deploying.
+> Run `export HF_TOKEN=hf_...` before deploying.
 
 When the command returns it prints the inference endpoint and a ready-to-run `curl` example. Full flag reference → [Deploy a Model](docs/deploy/deploy_models.md).
 
 ### Step 3 — Send your first request
 
-With the default `auth_type: jwt`, the helper script auto-discovers the gateway IP and fetches a JWT from the cluster:
+With the default `auth_type: jwt`, API clients send a Keycloak token (a JWT). The helper
+script finds the gateway address and gets a token from the cluster for you:
 
 ```bash
 source ./ext/enterprise.ai-inference/model_manager/scripts/get-keycloak-token.sh
-# Exports: TOKEN, GATEWAY_IP, GATEWAY_DOMAIN
+# Exports: TOKEN, GATEWAY_IP, GATEWAY_DOMAIN, GATEWAY_URL
 ```
 
-Call the model — the `model` field selects which one answers:
+Call the model. The `model` field selects which one answers:
 
 ```bash
-curl -sk --noproxy '*' \
+curl -s --noproxy '*' \
+  --cacert env/local/logs/ai-solutions-ca.crt \
+  --resolve "$GATEWAY_DOMAIN:443:$GATEWAY_IP" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  --resolve "inference.inteltoolkits.ai:443:$GATEWAY_IP" \
   -d '{"model":"qwen3-0-6b","messages":[{"role":"user","content":"Hello!"}],"max_tokens":64}' \
-  https://inference.inteltoolkits.ai/v1/chat/completions
+  "$GATEWAY_URL/v1/chat/completions"
 ```
+
+A JSON reply with a `choices` list means the model is serving. `--resolve` sends the
+request to the gateway IP without an `/etc/hosts` entry, and `--cacert` trusts the
+installer's self-signed certificate authority. The token lasts 15 minutes; `source` the
+script again for a new one.
 
 See what is serving:
 
@@ -162,8 +179,8 @@ Licensed under the [Apache License, Version 2.0](https://www.apache.org/licenses
 ## Links
 
 - [Documentation Index](docs/README.md)
-- [GitHub Repository](https://github.com/intel/enterprise-inference)
-- [Toolkit Manager](https://github.com/intel/enterprise-ai-solutions) — installs and operates this toolkit
+- [GitHub Repository](https://github.com/intel/inference-toolkit)
+- [Toolkit Manager](https://github.com/intel/toolkit-manager) — installs and operates this toolkit
 - [Architecture](docs/reference/architecture.md)
 - [Inference Request Flow](docs/reference/request_flow.md)
 

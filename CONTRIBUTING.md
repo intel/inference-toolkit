@@ -1,8 +1,29 @@
 # Contributing
 
+Thank you for helping improve Intel® Inference Toolkit. This repository is installed and
+operated by [Toolkit Manager](https://github.com/intel/toolkit-manager), so test a change
+the way users run it: from a Toolkit Manager checkout whose `ext/enterprise.ai-inference/`
+holds your branch.
+
+Before you open a pull request:
+
+1. Run the unit tests, as CI does (`.github/workflows/val-unit-tests.yml`):
+
+   ```bash
+   python -m pip install "pytest==8.4.2" PyYAML
+   python -m pytest -q model_manager/tests
+   ```
+
+2. Install the inference layer with your change (`./toolkit_manager.sh install inference`
+   in Toolkit Manager), and deploy and call a model as in the [Quick Start](README.md#quick-start).
+3. Update the docs under [`docs/`](docs/README.md) when behaviour, a flag or a default changes.
+
+Every pull request also runs ansible-lint, Bandit, Checkov, ShellCheck, Trivy and a review
+bot that follows [`.github/REVIEW_RULES.md`](.github/REVIEW_RULES.md).
+
 ### License
 
-<PROJECT NAME> is licensed under the terms in [LICENSE]<link to license file in repo>. By contributing to the project, you agree to the license and copyright terms therein and release your contribution under these terms.
+Intel® Inference Toolkit is licensed under the terms in [LICENSE](LICENSE). By contributing to the project, you agree to the license and copyright terms therein and release your contribution under these terms.
 
 ### Sign your work
 

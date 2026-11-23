@@ -18,7 +18,7 @@ detects. Nothing in `global_config.yaml` or `models.yaml` changes between platfo
 
 1. **Install the prerequisites:** the operators, the DataScienceCluster and a default
    StorageClass. Follow
-   [Deploy on OpenShift](https://github.com/intel/toolkit-manager/blob/main/docs/deploy/openshift.md)
+   [Deploy on OpenShift](https://github.com/intel/toolkit-manager/blob/main/docs/deployment/openshift.md)
    in the platform repo.
 2. **Install the platform layer:** run `./toolkit_manager.sh install platform --env <env>`
    (see that guide's *Installer configuration*).
@@ -134,4 +134,4 @@ Response codes: no token or an invalid one gives `401`, and a valid one `200`.
 - [Deploy a Model](../getting-started/deploy-models.md): every `model-manager` command
 - [Accessing Models](../getting-started/accessing-models.md): endpoints and credentials on Kubernetes
 - [CPU Pinning & NUMA](../reference/cpu-pinning.md): the balloons policy
-- [Deploy on OpenShift (platform)](https://github.com/intel/toolkit-manager/blob/main/docs/deploy/openshift.md): prerequisites and the platform layer
+- [Deploy on OpenShift (platform)](https://github.com/intel/toolkit-manager/blob/main/docs/deployment/openshift.md): prerequisites and the platform layer

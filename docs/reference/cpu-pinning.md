@@ -33,7 +33,7 @@ kubernetes_cpu_policy: "nri-balloons"   # nri-balloons | kubelet-static | best-e
 > This must match the value the cluster was **installed** with. It decides both how
 > kubelet is configured (Toolkit Manager repo) and how model manifests are rendered (this
 > repo). To change it on an existing cluster, follow
-> [NRI CPU Balloons](https://github.com/intel/toolkit-manager/blob/main/docs/customize/nri_cpu_balloons.md)
+> [NRI CPU Balloons](https://github.com/intel/toolkit-manager/blob/main/docs/configuration/nri-cpu-balloons.md)
 > in the Toolkit Manager docs.
 
 model-manager records the resolved policy on each model pod:
@@ -58,7 +58,7 @@ balloon type from the model's tensor-parallel size (TP), rounded up to 1, 2, 4 o
 (`model-balloon-tp1` ... `-tp8`); `MM_NRI_BALLOON_NAME=<type>` forces one type for a deploy.
 
 Tuning lives in the Toolkit Manager repo, because it configures the nodes (see its
-[NRI CPU Balloons](https://github.com/intel/toolkit-manager/blob/main/docs/customize/nri_cpu_balloons.md)
+[NRI CPU Balloons](https://github.com/intel/toolkit-manager/blob/main/docs/configuration/nri-cpu-balloons.md)
 guide):
 
 ```yaml

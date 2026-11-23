@@ -68,7 +68,7 @@ An inference request enters through the **LLM gateway**, which authenticates and
 > Intel® Inference Toolkit needs the cluster, gateway, sign-in and storage that Toolkit
 > Manager provides. The `install inference` step below brings those up with it. Hardware
 > and software requirements:
-> [Toolkit Manager prerequisites](https://github.com/intel/toolkit-manager/blob/main/docs/quickstart/prerequisites.md).
+> [Toolkit Manager prerequisites](https://github.com/intel/toolkit-manager/blob/main/docs/getting-started/prerequisites.md).
 
 ### Step 1 — Install the inference stack
 

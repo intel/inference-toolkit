@@ -36,7 +36,7 @@ env/<name>/nodes.yaml               the node list
 > `env/<name>/config.inference.yaml` for one environment's inference settings, such
 > as `auth_type`. Toolkit Manager settings — domain, storage — belong in
 > `env/<name>/global_config.yaml`. See the
-> [Toolkit Manager configuration reference](https://github.com/intel/toolkit-manager/blob/main/docs/customize/configuration.md).
+> [Toolkit Manager configuration reference](https://github.com/intel/toolkit-manager/blob/main/docs/configuration/configuration.md).
 
 ### Do I need to change anything?
 

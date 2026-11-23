@@ -280,7 +280,7 @@ Run it with `SSL_CERT_FILE=env/<env>/logs/ai-solutions-ca.crt` so Python trusts 
 installer's certificate authority. Your machine must also resolve the host name to the
 gateway IP (DNS or `/etc/hosts`); Python has no `--resolve`. For frameworks (LangChain,
 LlamaIndex, and others) see the Toolkit Manager
-[Integration Guide](https://github.com/intel/toolkit-manager/blob/main/docs/customize/integration.md).
+[Integration Guide](https://github.com/intel/toolkit-manager/blob/main/docs/reference/integration.md).
 
 For the full path a request takes through the gateways, see
 [Inference Request Flow](../reference/request-flow.md).

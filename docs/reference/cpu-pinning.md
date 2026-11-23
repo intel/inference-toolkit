@@ -1,5 +1,7 @@
 # CPU Pinning & NUMA
 
+[← Docs index](../README.md)
+
 ## Why it matters
 
 On CPU clusters, inference throughput depends heavily on *which* cores a model runs on.
@@ -13,7 +15,7 @@ gets exclusive, locality-aware CPU.
 
 ## The three policies
 
-One switch in [`config.yaml`](../customize/configuration.md#cpu-policy) (in your environment:
+One switch in [`config.yaml`](../configuration/configuration.md#cpu-policy) (in your environment:
 `env/<env>/config.inference.yaml`) controls all CPU-pinning infrastructure. Every dependent
 setting — NRI install, kubelet flags, model annotations — is derived from it.
 
@@ -96,7 +98,7 @@ re-apply.
 
 A catalog model with `cpu: auto` takes its CPU from the same balloon data: the free
 physical cores of one NUMA node per TP rank, on the smallest schedulable node. A deployed
-model keeps the CPU it has. See [Model Catalog](../customize/catalog.md#cpu-auto).
+model keeps the CPU it has. See [Model Catalog](../configuration/catalog.md#cpu-auto).
 
 ### Inspecting what got pinned
 
@@ -137,7 +139,7 @@ feature.node.kubernetes.io/cpu-cpuid.AVX512F=true
 
 model-manager turns the AMX label into a required `nodeAffinity` rule: the catalog's
 `require_amx: true` default keeps model pods off nodes without Intel® AMX
-(`cpu-cpuid.AMXBF16`) — see [Model Catalog](../customize/catalog.md#defaults). Pin a model to
+(`cpu-cpuid.AMXBF16`) — see [Model Catalog](../configuration/catalog.md#defaults). Pin a model to
 one specific node with `--node <name>`: optional, but when given the pod runs on that node or
 stays `Pending`.
 
@@ -154,6 +156,6 @@ stays `Pending`.
 ./model-manager deploy qwen3-0-6b --dry-run
 ```
 
-Related: [Configuration](../customize/configuration.md#cpu-policy) ·
-[Deploy a Model](../deploy/deploy_models.md#deploy-options) ·
-[Troubleshooting](../troubleshooting.md)
+Related: [Configuration](../configuration/configuration.md#cpu-policy) ·
+[Deploy a Model](../getting-started/deploy-models.md#deploy-options) ·
+[Troubleshooting](../faq-and-troubleshooting/troubleshooting.md)

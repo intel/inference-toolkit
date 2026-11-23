@@ -1,5 +1,7 @@
 # Guardrails — Safety Content Moderation
 
+[← Docs index](../README.md)
+
 **Guardrails** provides safety content moderation for LLM requests that go through LiteLLM. It screens chat requests through a dedicated guard model before they reach the main LLM, blocking unsafe or policy-violating content. It is on by default with `auth_type: litellm_vkey`, where LiteLLM is the only way to the models.
 
 Two components:
@@ -359,7 +361,7 @@ install, so a sandbox violation fails the install before anything is registered.
 These go through the port-forward above; the public endpoint behaves the same
 (`https://litellm.<base_domain_name>/v1/chat/completions`, or
 `https://<base_domain_name>/litellm/v1/chat/completions` with `routing_mode: path`) — see
-[Accessing Models](../deploy/accessing_models.md).
+[Accessing Models](../getting-started/accessing-models.md).
 
 ```bash
 # Benign request — normal answer

@@ -1,5 +1,7 @@
 # vLLM Semantic Router
 
+[← Docs index](../README.md)
+
 vLLM Semantic Router is a signal-driven decision routing framework for
 Mixture-of-Models deployments. It routes every request to the best model
 across local, private, and frontier backends -- guided by cost, latency,
@@ -100,7 +102,7 @@ gateway policy (the Keycloak sign-in, or the exemption when Keycloak is off).
 Send a request through the router, on the LiteLLM API
 (`https://litellm.<base_domain_name>/v1/...`, or `https://<base_domain_name>/litellm/v1/...`
 with `routing_mode: path`; `DOMAIN` and `GATEWAY_IP` as in
-[Accessing Models](../deploy/accessing_models.md)). Use the router's model name,
+[Accessing Models](../getting-started/accessing-models.md)). Use the router's model name,
 `vllm_sr_litellm_model_name`: `semantic-router` by default, as in these examples (use
 `vllm-sr/auto` with Intel® Agent Toolkit):
 

@@ -1,5 +1,7 @@
 # Deploy on OpenShift
 
+[← Docs index](../README.md)
+
 > [!NOTE]
 > Validated on single-node OpenShift 4.22 with OpenShift AI 3.3. See
 > [Known gaps](#known-gaps) for what is not supported yet.
@@ -39,7 +41,7 @@ detects. Nothing in `global_config.yaml` or `models.yaml` changes between platfo
 ## Deploy a model
 
 `model-manager` detects the platform on every run, before it renders anything. So the
-commands are the same as in [Deploy a Model](deploy_models.md). Run them from the Toolkit
+commands are the same as in [Deploy a Model](../getting-started/deploy-models.md). Run them from the Toolkit
 Manager folder:
 
 1. Point `kubectl` at the OpenShift cluster. On OpenShift the cluster is your own, so the
@@ -129,7 +131,7 @@ Response codes: no token or an invalid one gives `401`, and a valid one `200`.
 
 ## Related Docs
 
-- [Deploy a Model](deploy_models.md): every `model-manager` command
-- [Accessing Models](accessing_models.md): endpoints and credentials on Kubernetes
-- [CPU Pinning & NUMA](../reference/cpu_pinning.md): the balloons policy
+- [Deploy a Model](../getting-started/deploy-models.md): every `model-manager` command
+- [Accessing Models](../getting-started/accessing-models.md): endpoints and credentials on Kubernetes
+- [CPU Pinning & NUMA](../reference/cpu-pinning.md): the balloons policy
 - [Deploy on OpenShift (platform)](https://github.com/intel/toolkit-manager/blob/main/docs/deploy/openshift.md): prerequisites and the platform layer

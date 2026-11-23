@@ -1,5 +1,7 @@
 # Inference Request Flow
 
+[← Docs index](../README.md)
+
 End-to-end path for an inference request, from external client to model response.
 `eg-gateway` is the platform's edge proxy (Envoy Gateway, with the external IP);
 `ai-gateway` is the internal proxy (Envoy AI Gateway) that sends each request to its model.
@@ -7,7 +9,7 @@ The **EPP** (endpoint picker) is a KServe service that picks the best pod of a m
 
 ## Architecture
 
-Two auth modes are supported. The flow differs based on `auth_type` in `env/<env>/config.inference.yaml`. Keycloak is deployed in both modes for sign-in; `auth_type` only selects the API client credential. With `routing_mode: path` the hosts below become `https://<domain>/inference/v1/...` and `https://<domain>/litellm/v1/...`. On OpenShift neither AI gateway is installed: models are published through the OpenShift AI inference Gateway (see [Deploy on OpenShift](../deploy/openshift.md)).
+Two auth modes are supported. The flow differs based on `auth_type` in `env/<env>/config.inference.yaml`. Keycloak is deployed in both modes for sign-in; `auth_type` only selects the API client credential. With `routing_mode: path` the hosts below become `https://<domain>/inference/v1/...` and `https://<domain>/litellm/v1/...`. On OpenShift neither AI gateway is installed: models are published through the OpenShift AI inference Gateway (see [Deploy on OpenShift](../deployment/openshift.md)).
 
 ### `jwt` (default) — Unified Routing
 
@@ -169,7 +171,7 @@ curl --cacert env/<env>/logs/ai-solutions-ca.crt \
    (`qwen3guard`). Unsafe content returns HTTP 500 "Blocked by the content-safety
    guardrail: …" and the request stops here. The guardrail is fail-closed: while the guard
    model cannot be reached, every request is blocked. See
-   [Guardrails](../customize/guardrails.md).
+   [Guardrails](../configuration/guardrails.md).
 3. Checks the Valkey cache (`litellm_cache_enabled`, default `true`; hit → return cached response, skip steps 4-6)
 4. Resolves model name to backend `api_base` (from its database: `store_model_in_db: true`)
 5. Forwards to the model endpoint

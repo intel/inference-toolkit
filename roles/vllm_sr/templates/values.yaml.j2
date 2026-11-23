@@ -106,7 +106,7 @@ configOverride:
 {% else %}
 # Default Router config rendered from the routed models (vllm_sr_route_models, or
 # discovered). Author richer routing decisions via vllm_sr_config_override — see
-# docs/customize/vllm-semantic-router.md.
+# docs/configuration/semantic-router.md.
 {% set _coders = _vllm_sr_models | select('search', 'coder', ignorecase=true) | list %}
 config:
   version: v0.3

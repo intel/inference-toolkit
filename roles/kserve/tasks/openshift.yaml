@@ -93,7 +93,7 @@
             controllers not ready in {{ kserve_openshift_namespace }}: {{ _missing_ctrl | join(', ') or 'none' }}
           Install rhods-operator, LeaderWorkerSet and Red Hat Connectivity Link from
           OperatorHub and create a DataScienceCluster with kserve Managed
-          (docs/deploy/openshift.md, steps 9 to 11). The installer does not deploy KServe on OpenShift.
+          (docs/deployment/openshift.md, steps 9 to 11). The installer does not deploy KServe on OpenShift.
         success_msg: "OpenShift AI KServe ready ({{ _dsc.metadata.name }})"
 
 - name: "kserve | OpenShift: inference Gateway"

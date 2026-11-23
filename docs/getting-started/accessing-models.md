@@ -1,5 +1,7 @@
 # Accessing Models
 
+[← Docs index](../README.md)
+
 Both auth modes expose the **same OpenAI-compatible API** on a single endpoint: the
 `model` field in the request body selects which deployed model answers. What differs
 is the hostname and the credential.
@@ -109,7 +111,7 @@ which checks the bearer key, that key's allowed models, budget and rate limit, t
 routes on to the AI gateway. The content-safety guardrail (on by default in this mode)
 screens each request with a guard model first: a blocked request returns HTTP `500`
 "Blocked by the content-safety guardrail: …", and while the guard model is not Ready
-every request is blocked — see [Guardrails](../customize/guardrails.md).
+every request is blocked — see [Guardrails](../configuration/guardrails.md).
 
 Get the master key (full admin rights; keep it secret):
 
@@ -281,4 +283,4 @@ LlamaIndex, and others) see the Toolkit Manager
 [Integration Guide](https://github.com/intel/toolkit-manager/blob/main/docs/customize/integration.md).
 
 For the full path a request takes through the gateways, see
-[Inference Request Flow](../reference/request_flow.md).
+[Inference Request Flow](../reference/request-flow.md).

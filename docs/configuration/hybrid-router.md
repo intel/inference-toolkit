@@ -1,5 +1,7 @@
 # Hybrid Router — Intelligent Inference Routing for the LiteLLM Gateway
 
+[← Docs index](../README.md)
+
 The **Hybrid Router** adds cost- and latency-aware model selection to the LiteLLM
 gateway. Clients call a single virtual model (`hybrid-router`); the router
 classifies each request by complexity and dispatches it to the best real model for
@@ -293,7 +295,7 @@ gateway.
 Send any request to `model="hybrid-router"` on the LiteLLM API
 (`https://litellm.<base_domain_name>/v1/...`, or `https://<base_domain_name>/litellm/v1/...`
 with `routing_mode: path`; `DOMAIN` and `GATEWAY_IP` as in
-[Accessing Models](../deploy/accessing_models.md)):
+[Accessing Models](../getting-started/accessing-models.md)):
 
 ```bash
 curl -s --noproxy '*' --cacert env/<env>/logs/ai-solutions-ca.crt \

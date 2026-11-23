@@ -2,7 +2,7 @@
 
 The KV pool rules follow vLLM 0.28's CPU backend: one VLLM_CPU_KVCACHE_SPACE pool per
 TP worker, page sizes unified across layer types, and linear-attention state padded to
-the attention page. See docs/reference/memory_sizing.md.
+the attention page. See docs/reference/memory-sizing.md.
 """
 from __future__ import annotations
 

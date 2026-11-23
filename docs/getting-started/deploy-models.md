@@ -1,5 +1,7 @@
 # Deploy a Model
 
+[← Docs index](../README.md)
+
 `model-manager` is a CLI that takes a model from Hugging Face to a live
 OpenAI-compatible endpoint. It exposes two lifecycle commands — **`deploy`** and
 **`undeploy`** — and delegates status, scaling, and logs to `kubectl`, since the
@@ -59,9 +61,9 @@ apply. Set `MM_FORCE_REDEPLOY=1` to force a full re-apply regardless.
 | `--as <name>` | Deploy a catalog model under a different name — run several variants at once |
 | `--server <name>` | Which engine serves the model: `vllm` (default), `openvino`, `vllm-cuda` or `vllm-xpu` (alias: `--runtime`) |
 | `--server-version <v>` | Which version of that engine to use — see [below](#pick-an-engine-and-version) |
-| `--cpu N` | Number of CPU cores to give the model. `--cpu auto` sizes it to a NUMA node — see [CPU auto](../customize/catalog.md#cpu-auto) |
-| `--memory NGi` | Memory limit, e.g. `32Gi`. `--memory auto` sizes a vLLM chat or vision-language model's memory and KV cache from its config, and is the default with `--hfid` — see [Memory & KV-Cache Sizing](../reference/memory_sizing.md) |
-| `--kv-streams N` | With `--memory auto`: how many requests of the full context the KV cache holds at once (default: 1) — see [Streams](../reference/memory_sizing.md#sizing-vs-vllm-serving) |
+| `--cpu N` | Number of CPU cores to give the model. `--cpu auto` sizes it to a NUMA node — see [CPU auto](../configuration/catalog.md#cpu-auto) |
+| `--memory NGi` | Memory limit, e.g. `32Gi`. `--memory auto` sizes a vLLM chat or vision-language model's memory and KV cache from its config, and is the default with `--hfid` — see [Memory & KV-Cache Sizing](../reference/memory-sizing.md) |
+| `--kv-streams N` | With `--memory auto`: how many requests of the full context the KV cache holds at once (default: 1) — see [Streams](../reference/memory-sizing.md#sizing-vs-vllm-serving) |
 | `--replicas N` | How many copies to run (default: 1); a fixed count, which turns autoscaling off |
 | `--min-replicas N` / `--max-replicas N` | Autoscale between N copies (default min: 1); a max above the min turns it on. Needs `keda_enabled: true` and KServe 0.21 (`envoy_gateway_upgrade: true`); not on OpenShift yet |
 | `--scale-target N` | Load per copy that triggers a scale-up: waiting requests for vLLM (default: 2), in-flight requests for OpenVINO (default: 4) |
@@ -69,7 +71,7 @@ apply. Set `MM_FORCE_REDEPLOY=1` to force a full re-apply regardless.
 | `--gpus N` | GPUs per pod for a GPU engine (`vllm-cuda`, `vllm-xpu`); also the default `--tp` — see [below](#deploy-on-gpu-nodes) |
 | `--category <cat>` | Force the workload type: `llm`, `embed`, `rerank`, or `vlm` |
 | `--node <name>` | Pin the model to a specific cluster node |
-| `--cpu-policy <p>` | Override the CPU-pinning policy for this model: `nri-balloons`, `kubelet-static`, or `best-effort`. Must match how the cluster was installed — see [CPU Pinning & NUMA](../reference/cpu_pinning.md) |
+| `--cpu-policy <p>` | Override the CPU-pinning policy for this model: `nri-balloons`, `kubelet-static`, or `best-effort`. Must match how the cluster was installed — see [CPU Pinning & NUMA](../reference/cpu-pinning.md) |
 | `--routing <mode>` | How requests reach the model: `epp`, `aigateway` or `direct` (advanced) |
 | `--env KEY=VAL` | Set an environment variable in the model's container (repeatable) |
 | `--arg "--flag=val"` | Pass an extra engine flag, e.g. a vLLM option (repeatable) |
@@ -98,12 +100,12 @@ engine. This lets you upgrade deliberately, or A/B two versions side by side.
 
 The catalog decides which versions a model is *allowed* to use — asking for one that
 isn't listed fails with a clear message rather than deploying something untested. See
-[Model Catalog](../customize/catalog.md#choose-which-server-and-version-a-model-may-use).
+[Model Catalog](../configuration/catalog.md#choose-which-server-and-version-a-model-may-use).
 
 ## Deploy on GPU nodes
 
 The catalog ships GPU engines, `vllm-cuda` (NVIDIA) and `vllm-xpu` (Intel Arc Pro B-Series, see
-[vLLM on Intel Arc Pro B-Series](../customize/runtimes.md#vllm-on-intel-arc-pro-b-series-vllm-xpu)),
+[vLLM on Intel Arc Pro B-Series](../configuration/runtimes.md#vllm-on-intel-arc-pro-b-series-vllm-xpu)),
 alongside the default CPU `vllm`.
 A model runs on GPU by selecting that runtime and, optionally, a GPU count:
 
@@ -215,7 +217,7 @@ cards.
 
 All downloaded weights share one PVC, `model-store`, sized by
 `llm_services_model_store_size` (default `200Gi`, see
-[Model-store size](../customize/catalog.md#model-store-size)). That holds
+[Model-store size](../configuration/catalog.md#model-store-size)). That holds
 Llama 3.1 70B (~141 GB) or Nemotron 3 Super FP8 (~128 GB), but not both, and
 not Nemotron 3 Ultra NVFP4 (~352 GB). For all of them, set
 `llm_services_model_store_size: 1Ti` in `config.inference.yaml` before the
@@ -233,7 +235,7 @@ redirected to `/tmp` via the runtime's env (`HOME`, `XDG_CACHE_HOME`,
 You don't need a catalog entry to try a model. Point `--hfid` at any Hugging Face repo
 and model-manager infers the workload type (chat model, embedding, or reranker) from
 the model's metadata. Without `--memory`, a vLLM chat model's memory and KV cache are sized
-from its config ([how](../reference/memory_sizing.md)), as with `--memory auto`; when they
+from its config ([how](../reference/memory-sizing.md)), as with `--memory auto`; when they
 cannot be, or for embeddings, rerankers and OpenVINO, the category memory is used:
 
 ```bash
@@ -257,7 +259,7 @@ HF_TOKEN with an authorized token.", and during auto-deploy is reported without 
 
 `--memory auto` needs the token too: it reads the model's `config.json`, which is gated, and
 stops the deploy without it (`--hfid` without `--memory` warns and uses the category memory). See
-[Memory & KV-Cache Sizing](../reference/memory_sizing.md#when-a-model-cannot-be-sized).
+[Memory & KV-Cache Sizing](../reference/memory-sizing.md#when-a-model-cannot-be-sized).
 
 ## Models with custom code (`--trust-remote-code`)
 
@@ -309,7 +311,7 @@ Each `deploy` runs these steps in order:
 1. **Resolve config** — combine the catalog defaults, the model's entry, and any CLI
    flags into one final configuration.
 2. **Capacity check** — confirm the requested CPU fits the node's physical cores
-   before changing anything. See [CPU Pinning & NUMA](../reference/cpu_pinning.md).
+   before changing anything. See [CPU Pinning & NUMA](../reference/cpu-pinning.md).
    A GPU model checks free GPUs and the model store instead (see [The GPU pre-flight](#the-gpu-pre-flight)).
 3. **Ensure storage** — make sure the shared `model-store` PVC is ready.
 4. **Download weights** — a one-off Kubernetes Job pulls the model from Hugging Face
@@ -319,4 +321,4 @@ Each `deploy` runs these steps in order:
 6. **Register** — wire the model into the AI gateway (or LiteLLM) so it can receive
    requests.
 
-Next: [Accessing Models](accessing_models.md) for endpoints and credentials.
+Next: [Accessing Models](accessing-models.md) for endpoints and credentials.

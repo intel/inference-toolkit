@@ -32,7 +32,7 @@ The Ansible roles here deploy the serving infrastructure itself: KServe for the 
 
 The result is a single OpenAI-compatible endpoint. The `model` field in the request body selects which model answers, so any OpenAI SDK client works unchanged.
 
-> Want the full picture? See [Architecture](docs/reference/architecture.md) and [Inference Request Flow](docs/reference/request_flow.md).
+> Want the full picture? See [Architecture](docs/reference/architecture.md) and [Inference Request Flow](docs/reference/request-flow.md).
 
 ## Architecture
 
@@ -42,7 +42,7 @@ An inference request enters through the **LLM gateway**, which authenticates and
   <img src="docs/assets/intel-inference-toolkit-architecture.png" alt="Intel® Inference Toolkit: run and scale generative AI inference on a simplified AI stack, on Intel® GPU D-series and Intel® Xeon®, with open-source orchestration. Packaged one-click software deployment. An inference request enters the stack and an inference response leaves it. Top to bottom: API applications and services (samples, API apps and functions, OpenAI-compatible API endpoints); LLM gateway (authentication and authorization, model endpoints, user and key management, token telemetry, monitoring); inferencing engines (vLLM, SGLang, OVMS); orchestration (Kubernetes orchestrator, Helm charts); infrastructure core components (Ubuntu 22.04, Xeon and GPU software: operators, firmware, and drivers)." />
 </p>
 
-> Under the hood there are two gateways: the edge gateway terminates TLS and authenticates, while the in-cluster AI gateway routes to the model the request body names. See the [Architecture deep-dive](docs/reference/architecture.md) and [Inference Request Flow](docs/reference/request_flow.md) for the full component list and execution flow.
+> Under the hood there are two gateways: the edge gateway terminates TLS and authenticates, while the in-cluster AI gateway routes to the model the request body names. See the [Architecture deep-dive](docs/reference/architecture.md) and [Inference Request Flow](docs/reference/request-flow.md) for the full component list and execution flow.
 
 ---
 
@@ -83,7 +83,7 @@ A successful run ends with an `INSTALLATION COMPLETE` banner.
 
 This toolkit's settings live in `env/local/config.inference.yaml`. `init` copies it from
 this repo's [`config.yaml`](config.yaml), and the install reads your copy. Edit it, then
-run `install inference` again. See [Configuration](docs/customize/configuration.md) for every
+run `install inference` again. See [Configuration](docs/configuration/configuration.md) for every
 option, including the `envoy` / `agentgateway` choice and the cluster CPU-pinning policy.
 
 ### Step 2 — Deploy a model
@@ -107,7 +107,7 @@ time: an unchanged model is left as it is.
 > Gated models (Llama, Mistral, Gemma) require a free [Hugging Face token](https://huggingface.co/settings/tokens).
 > Run `export HF_TOKEN=hf_...` before deploying.
 
-When the command returns it prints the inference endpoint and a ready-to-run `curl` example. Full flag reference → [Deploy a Model](docs/deploy/deploy_models.md).
+When the command returns it prints the inference endpoint and a ready-to-run `curl` example. Full flag reference → [Deploy a Model](docs/getting-started/deploy-models.md).
 
 ### Step 3 — Send your first request
 
@@ -146,7 +146,7 @@ kubectl get llminferenceservices,inferenceservices -n llm-inference
 > **Using `auth_type: litellm_vkey` instead?** Set it in `env/<env>/config.inference.yaml`.
 > Keycloak is still deployed for sign-in, but API clients authenticate with a LiteLLM master or
 > virtual key on `litellm.<your-domain>` — not a JWT on `inference.<your-domain>`. Full walkthrough →
-> [Accessing Models](docs/deploy/accessing_models.md).
+> [Accessing Models](docs/getting-started/accessing-models.md).
 
 Everything speaks the OpenAI-compatible API, so any tool that works with OpenAI works against your stack.
 
@@ -158,17 +158,17 @@ The Quick Start deploys one catalog model with defaults. From here you can chang
 
 | Goal | Guide |
 |---|---|
-| Deploy, update, and remove models | [Deploy a Model](docs/deploy/deploy_models.md) |
-| Endpoints and authentication modes | [Accessing Models](docs/deploy/accessing_models.md) |
-| Add models — the `models.yaml` catalog | [Model Catalog](docs/customize/catalog.md) |
-| Engines, versions, and per-workload defaults | [Runtimes](docs/customize/runtimes.md) |
-| All configuration options | [Configuration](docs/customize/configuration.md) |
+| Deploy, update, and remove models | [Deploy a Model](docs/getting-started/deploy-models.md) |
+| Endpoints and authentication modes | [Accessing Models](docs/getting-started/accessing-models.md) |
+| Add models — the `models.yaml` catalog | [Model Catalog](docs/configuration/catalog.md) |
+| Engines, versions, and per-workload defaults | [Runtimes](docs/configuration/runtimes.md) |
+| All configuration options | [Configuration](docs/configuration/configuration.md) |
 | Components, roles, and how Toolkit Manager installs this toolkit | [Architecture](docs/reference/architecture.md) |
-| How a request reaches a model | [Inference Request Flow](docs/reference/request_flow.md) |
-| Content-safety screening of LiteLLM requests | [Guardrails](docs/customize/guardrails.md) |
-| Route each request to a model by prompt | [Hybrid Router](docs/customize/hybrid-router.md), [vLLM Semantic Router](docs/customize/vllm-semantic-router.md) |
-| NUMA-aware CPU pinning | [CPU Pinning & NUMA](docs/reference/cpu_pinning.md) |
-| Something isn't working | [Troubleshooting](docs/troubleshooting.md) |
+| How a request reaches a model | [Inference Request Flow](docs/reference/request-flow.md) |
+| Content-safety screening of LiteLLM requests | [Guardrails](docs/configuration/guardrails.md) |
+| Route each request to a model by prompt | [Hybrid Router](docs/configuration/hybrid-router.md), [vLLM Semantic Router](docs/configuration/semantic-router.md) |
+| NUMA-aware CPU pinning | [CPU Pinning & NUMA](docs/reference/cpu-pinning.md) |
+| Something isn't working | [Troubleshooting](docs/faq-and-troubleshooting/troubleshooting.md) |
 
 ---
 
@@ -182,7 +182,7 @@ Licensed under the [Apache License, Version 2.0](https://www.apache.org/licenses
 - [GitHub Repository](https://github.com/intel/inference-toolkit)
 - [Toolkit Manager](https://github.com/intel/toolkit-manager) — installs and operates this toolkit
 - [Architecture](docs/reference/architecture.md)
-- [Inference Request Flow](docs/reference/request_flow.md)
+- [Inference Request Flow](docs/reference/request-flow.md)
 
 ---
 

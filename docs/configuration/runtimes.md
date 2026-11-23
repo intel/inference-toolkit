@@ -1,5 +1,7 @@
 # Runtimes
 
+[← Docs index](../README.md)
+
 ## What is it?
 
 A **runtime** is the engine that actually serves a model. Four are supported; pick one
@@ -124,7 +126,7 @@ shm_size: 10Gi                              # /dev/shm for NCCL tensor paralleli
 
 A runtime for another accelerator uses the same keys with that accelerator's image and
 resource, for example `vllm-xpu` below with `gpu.intel.com/xe` from the Intel GPU device plugin. See
-[Deploy on GPU nodes](../deploy/deploy_models.md#deploy-on-gpu-nodes) for the GPU
+[Deploy on GPU nodes](../getting-started/deploy-models.md#deploy-on-gpu-nodes) for the GPU
 pre-flight and what changes in the rendered manifest.
 
 ### vLLM on Intel Arc Pro B-Series (`vllm-xpu`)
@@ -236,7 +238,7 @@ must be converted and quantized to OpenVINO IR.
 ### API paths
 
 Clients always use the OpenAI `/v1/` paths, which OVMS serves directly. See
-[Inference Request Flow](../reference/request_flow.md).
+[Inference Request Flow](../reference/request-flow.md).
 
 ## Which kind of Kubernetes object?
 

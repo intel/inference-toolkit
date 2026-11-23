@@ -1,5 +1,7 @@
 # Model Catalog (`models.yaml`)
 
+[← Docs index](../README.md)
+
 ## What is it?
 
 `models.yaml` is the one file you edit to control what runs and how. It is the single
@@ -115,8 +117,8 @@ models:
 | `name` | Deploy name, and the `model` id used in API requests. Lower-case letters, digits and `-`, up to 63 characters |
 | `model_id` | The Hugging Face repo to pull weights from |
 | `category` | Workload class — `llm`, `embed`, `rerank`, or `vlm`. Drives default args, CPU, and memory. Unset, it is guessed from the Hugging Face model card |
-| `cpu` / `memory` | Resource requests (default: from the category). `cpu: auto` sizes CPU to a NUMA node — see [below](#cpu-auto). `memory: auto` sizes a vLLM `llm` or `vlm` model's memory and KV cache from its Hugging Face config — see [Memory & KV-Cache Sizing](../reference/memory_sizing.md). A set value, or the category default, is used as is and checked to fit |
-| `kv_streams` | With `memory: auto`: how many requests of the full context the KV cache holds at once (default: 1, no upper limit; the pre-flight catches a value that doesn't fit). Not vLLM's `--max-num-seqs` — see [Streams](../reference/memory_sizing.md#sizing-vs-vllm-serving) |
+| `cpu` / `memory` | Resource requests (default: from the category). `cpu: auto` sizes CPU to a NUMA node — see [below](#cpu-auto). `memory: auto` sizes a vLLM `llm` or `vlm` model's memory and KV cache from its Hugging Face config — see [Memory & KV-Cache Sizing](../reference/memory-sizing.md). A set value, or the category default, is used as is and checked to fit |
+| `kv_streams` | With `memory: auto`: how many requests of the full context the KV cache holds at once (default: 1, no upper limit; the pre-flight catches a value that doesn't fit). Not vLLM's `--max-num-seqs` — see [Streams](../reference/memory-sizing.md#sizing-vs-vllm-serving) |
 | `gpus` | GPUs per pod on a GPU runtime (`vllm-cuda`, `vllm-xpu`); also its default tensor-parallel size |
 | `replicas` | Replica count (default: 1) |
 | `autoscaling` | `{min_replicas, max_replicas, scale_target}`: autoscale with KEDA between the two counts (default min: 1), scaling up when the load per replica exceeds `scale_target`: waiting requests for vLLM (default: 2), in-flight requests for OpenVINO (default: 4). Replaces `replicas`. Needs `keda_enabled: true` and KServe 0.21 (`envoy_gateway_upgrade: true`), an `LLMInferenceService` model and plain Kubernetes (not OpenShift); `vllm-cuda` and `vllm-xpu` define no signal, so their models need a fixed `replicas`. The signal and its default are set per runtime (`autoscaling` in `runtimes/<name>/values.yaml`) |
@@ -169,7 +171,7 @@ Version selection precedence, highest first:
 ```
 
 Select at deploy time with `--server <engine> --server-version <v>`, and run variants
-side by side with `--as <alt-name>`. See [Deploy a Model](../deploy/deploy_models.md#pick-an-engine-and-version).
+side by side with `--as <alt-name>`. See [Deploy a Model](../getting-started/deploy-models.md#pick-an-engine-and-version).
 
 The engines themselves — images, available versions, and shared settings — are defined
 once under `runtimes:`. See [Runtimes](runtimes.md).
@@ -198,7 +200,7 @@ once under `runtimes:`. See [Runtimes](runtimes.md).
   deploy stops with `cpu: auto — only N free CPUs per NUMA node …`: undeploy a model,
   add a node, or pass `--cpu`.
 
-See [CPU Pinning & NUMA](../reference/cpu_pinning.md).
+See [CPU Pinning & NUMA](../reference/cpu-pinning.md).
 
 ## Chat templates
 

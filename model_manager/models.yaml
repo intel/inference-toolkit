@@ -47,7 +47,7 @@ network:
 #   cpu / memory:    resource requests            (default from category)
 #                    memory: auto — a vLLM llm or vlm model is sized from its
 #                    HuggingFace config.json (weights + load + KV + overhead); see
-#                    docs/reference/memory_sizing.md. A value (memory: 128Gi),
+#                    docs/reference/memory-sizing.md. A value (memory: 128Gi),
 #                    or the category default, is used as is and checked to fit.
 #                    cpu: auto — NUMA-aware: under nri-balloons, the free
 #                    physical cores of one NUMA node per TP rank on the smallest
@@ -538,7 +538,7 @@ models:
       VLLM_CPU_SGL_KERNEL: "1"
       TORCHDYNAMO_DISABLE: "1"
 
-  # ── GPU examples (runtime: vllm-cuda): see docs/deploy/deploy_models.md#the-gpu-pre-flight ──
+  # ── GPU examples (runtime: vllm-cuda): see docs/getting-started/deploy-models.md#the-gpu-pre-flight ──
 
   # LLM — small Qwen3 on 1 NVIDIA GPU. Smoke test for the GPU path.
   - name: qwen3-0-6b-cuda
@@ -638,7 +638,7 @@ runtimes:
   vllm:
     default_version: "0.24.0"       # used when a model/CLI doesn't pick a version
 
-    # memory: auto's estimated parts (docs/reference/memory_sizing.md#tuning-the-constants).
+    # memory: auto's estimated parts (docs/reference/memory-sizing.md#tuning-the-constants).
     # Every key is optional; unset = the built-in default shown. Changing one re-sizes
     # memory: auto models on their next deploy.
     # sizing:
@@ -708,7 +708,7 @@ runtimes:
 
   # ── vLLM (NVIDIA GPU / CUDA) ────────────────────────────────────────────────
   # GPU counterpart of `vllm`; plumbing in runtimes/vllm-cuda/values.yaml, the
-  # GPU pre-flight in docs/deploy/deploy_models.md#the-gpu-pre-flight.
+  # GPU pre-flight in docs/getting-started/deploy-models.md#the-gpu-pre-flight.
   vllm-cuda:
     default_version: "0.28.0"
 

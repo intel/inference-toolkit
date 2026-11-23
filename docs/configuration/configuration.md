@@ -1,5 +1,7 @@
 # Configuration
 
+[← Docs index](../README.md)
+
 ## What is this?
 
 `config.yaml` at this repo's root holds the settings for **Intel® Inference Toolkit** —
@@ -98,7 +100,7 @@ Every hostname defaults to a prefix on Toolkit Manager's `base_domain_name`.
 > [!NOTE]
 > The two auth modes serve on **different** hostnames. With `routing_mode: path` in
 > `global_config.yaml` the hosts are not used: the APIs are `<base_domain_name>/inference/v1`
-> and `<base_domain_name>/litellm/v1`. See [Accessing Models](../deploy/accessing_models.md).
+> and `<base_domain_name>/litellm/v1`. See [Accessing Models](../getting-started/accessing-models.md).
 
 ## Keycloak
 
@@ -193,7 +195,7 @@ Both are off by default and leave direct model calls unchanged.
 # vllm_sr_dashboard_enabled: true                 # default false; vllm-sr.<base_domain_name>
 ```
 
-Details → [Hybrid Router](hybrid-router.md), [vLLM Semantic Router](vllm-semantic-router.md).
+Details → [Hybrid Router](hybrid-router.md), [vLLM Semantic Router](semantic-router.md).
 
 ## CPU policy
 
@@ -233,7 +235,7 @@ With `full-pcpus-only` enabled (the Toolkit Manager default) a pod's `cpu` reque
 multiple of the SMT width or kubelet rejects it with `SMTAlignmentError`; model-manager
 rounds `cpu` up to satisfy this.
 
-Full detail → [CPU Pinning & NUMA](../reference/cpu_pinning.md).
+Full detail → [CPU Pinning & NUMA](../reference/cpu-pinning.md).
 
 ## LLM services and model deployment
 

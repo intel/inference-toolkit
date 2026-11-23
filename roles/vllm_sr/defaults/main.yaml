@@ -76,7 +76,7 @@ vllm_sr_cache_backend: "memory"
 
 # Full canonical Router config override (advanced). When null, the role renders a
 # sensible default from the routed models. Author routing decisions per the
-# user guide (docs/customize/vllm-semantic-router.md).
+# user guide (docs/configuration/semantic-router.md).
 vllm_sr_config_override: null
 
 # --- Dashboard (official chart: its own Deployment/Service/PVC) ---------------

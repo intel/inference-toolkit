@@ -1,5 +1,7 @@
 # Architecture
 
+[← Docs index](../README.md)
+
 This repository owns everything related to model inference — the Kubernetes serving
 stack and the CLI that deploys and manages models at runtime.
 
@@ -36,7 +38,7 @@ under `inference`, and Toolkit Manager runs them in dependency order.
 > [!NOTE]
 > `nri_cpu_balloons` is **not** here — it lives in the Toolkit Manager repo, because it
 > configures kubelet-level settings on the nodes. See
-> [CPU Pinning & NUMA](cpu_pinning.md).
+> [CPU Pinning & NUMA](cpu-pinning.md).
 
 Because the gateway roles are mutually exclusive on `ai_gateway_provider`, `kserve`
 depends on both: whichever one is enabled runs first, and the other is skipped. On OpenShift
@@ -73,7 +75,7 @@ straight to `ai-gateway`; LiteLLM is not in the path. In **litellm_vkey** mode,
 ```
 
 Step-by-step packet detail, including a verified network trace, is in
-[Inference Request Flow](request_flow.md).
+[Inference Request Flow](request-flow.md).
 
 ## Integration with Toolkit Manager
 
@@ -124,8 +126,8 @@ aigateway` overrides the routing for one deploy.
 
 ## Related
 
-- [Inference Request Flow](request_flow.md) — end-to-end routing for both auth modes
-- [CPU Pinning & NUMA](cpu_pinning.md) — the three CPU policies and the capacity check
+- [Inference Request Flow](request-flow.md) — end-to-end routing for both auth modes
+- [CPU Pinning & NUMA](cpu-pinning.md) — the three CPU policies and the capacity check
 - [Database Architecture](database.md) — shared PostgreSQL for LiteLLM and Langfuse
 - [Architecture & Design (Toolkit Manager)](https://github.com/intel/toolkit-manager/blob/main/docs/reference/architecture.md) — layers, the installer and its execution flow
-- [Configuration](../customize/configuration.md) — every setting in `config.yaml`
+- [Configuration](../configuration/configuration.md) — every setting in `config.yaml`

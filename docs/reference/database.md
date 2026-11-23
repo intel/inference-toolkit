@@ -1,5 +1,7 @@
 # Database Architecture
 
+[← Docs index](../README.md)
+
 ## Overview
 
 The Intel Inference Toolkit uses a **shared CloudNativePG (CNPG) PostgreSQL cluster**, which Toolkit Manager's platform layer installs (the `postgresql` role). Each consumer (LiteLLM, Langfuse, Keycloak) gets its own isolated database and user within the same cluster. The `litellm` and `langfuse` databases exist only while those services are enabled (`auth_type: litellm_vkey` or `litellm_enabled: true`; Langfuse also needs `langfuse_enabled`, default `true`).

@@ -1,4 +1,4 @@
-![Intel® Inference Toolkit](docs/images/banner.jpg)
+![Intel® Inference Toolkit](docs/assets/banner.jpg)
 
 # Intel® Inference Toolkit
 

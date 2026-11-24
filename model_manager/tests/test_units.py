@@ -1,6 +1,7 @@
 """Unit tests for behaviour the parity suite cannot observe, mostly fixes over the legacy CLI."""
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import re
@@ -355,10 +356,16 @@ def test_litellm_called_directly_in_a_pod(monkeypatch):
     assert seen == {"url": "http://litellm.litellm.svc:4000/model/new", "auth": "Bearer k", "method": "POST"}
 
 
+RT = {"vllm": {}, "ovms": {"container": {"command": ["/ovms/bin/ovms"]}},
+      "iims": {"container": {"command": ["python3"], "args_env": "INFERENCE_ENGINE_ARGS"}},
+      "vllm-cuda": {}, "vllm-xpu": {"container": {"command": ["python3"], "chat_template": True}}}
+
+
 @pytest.mark.parametrize("category, runtime, provider_model, mode", [
     ("llm", "vllm", "openai/m", None),
     ("embed", "vllm", "hosted_vllm/m", "embedding"),
     ("rerank", "vllm", "hosted_vllm/m", "rerank"),
+    ("rerank", "iims", "hosted_vllm/m", "rerank"),   # the IIM launcher serves vLLM's API
     ("embed", "vllm-cuda", "hosted_vllm/m", "embedding"),
     ("rerank", "vllm-cuda", "hosted_vllm/m", "rerank"),
     ("embed", "vllm-xpu", "hosted_vllm/m", "embedding"),
@@ -374,7 +381,7 @@ def test_litellm_register_payload(monkeypatch, category, runtime, provider_model
     monkeypatch.setattr(routing, "_internal_url", lambda m: "http://backend/v1")
     monkeypatch.setattr(routing, "_litellm_ids", lambda name, base: ["id"])
     monkeypatch.setattr(routing, "_litellm", lambda method, url, payload=None: sent.append((url, payload)) or "{}")
-    routing.litellm_register(Model(name="m", namespace="n", category=category, runtime=runtime))
+    routing.litellm_register(Model(name="m", namespace="n", category=category, runtime=runtime, rt=RT[runtime]))
     url, payload = sent[0]
     assert url == "http://litellm/model/new"
     assert payload["litellm_params"]["model"] == provider_model
@@ -716,10 +723,11 @@ def test_autoscaling_renders_keda_scaling_instead_of_replicas(monkeypatch):
 
 
 def test_autoscaling_from_catalog_and_fixed_replicas_override(monkeypatch, tmp_path):
+    data = yaml.safe_load((cli.MM_DIR / "models.yaml").read_text())   # edited structurally, not by text
+    next(e for e in data["models"] if e["name"] == "qwen3-0-6b")["autoscaling"] = {
+        "min_replicas": 2, "max_replicas": 4, "scale_target": 5}
     catalog = tmp_path / "models.yaml"
-    catalog.write_text((cli.MM_DIR / "models.yaml").read_text().replace(
-        "  - name: qwen3-0-6b ",
-        "  - name: qwen3-0-6b\n    autoscaling: {min_replicas: 2, max_replicas: 4, scale_target: 5}\n    x: ", 1))
+    catalog.write_text(yaml.safe_dump(data, sort_keys=False))   # keep the shipped key order
     m, doc = _render(monkeypatch, "qwen3-0-6b", catalog=catalog)
     assert (doc["spec"]["scaling"]["minReplicas"], doc["spec"]["scaling"]["maxReplicas"]) == (2, 4)
     assert doc["spec"]["scaling"]["keda"]["triggers"][0]["metadata"]["threshold"] == "5"
@@ -907,11 +915,119 @@ def test_ovms_renders_an_llmisvc_with_its_own_container(monkeypatch):
 
 
 def test_vllm_keeps_kserves_container(monkeypatch):
-    _, doc = _render(monkeypatch, "qwen3-0-6b")
+    _, doc = _render(monkeypatch, "qwen3-0-6b", "--server", "vllm")
     main = _main(doc)
     assert "command" not in main and "--served-model-name" in main["args"]
     assert {main[p]["httpGet"]["path"] for p in ("startupProbe", "readinessProbe", "livenessProbe")} == {"/health"}
     assert main["securityContext"]["runAsUser"] == 1000
+
+
+def test_iim_launcher_takes_vllm_args_as_json(monkeypatch):
+    # The IIM launcher's `serve` takes no CLI args: they reach vLLM through INFERENCE_ENGINE_ARGS.
+    m, _ = _render(monkeypatch, "iim-qwen3-4b")
+    cat = Catalog(cli.MM_DIR / "models.yaml")
+    doc = yaml.safe_load(renderer.manifest(m, cat, cli.parse_args(["deploy", "iim-qwen3-4b"]), {}, m.cpu,
+                                           ["--max-num-seqs", "64"]))   # deploy() passes the --arg list here
+    main = _main(doc)
+    env = {e["name"]: e.get("value") for e in main["env"]}
+    assert main["command"] == ["python3", "-m", "inference_runtime.cli", "serve"] and main["args"] == []
+    assert json.loads(env["INFERENCE_ENGINE_ARGS"]) == {
+        "model": "/mnt/models", "served-model-name": "iim-qwen3-4b", "max-model-len": "auto",
+        "enable-auto-tool-choice": True, "tool-call-parser": "hermes", "max-num-seqs": "64"}
+    assert env["INFERENCE_MODEL_ID"] == "Qwen/Qwen3-4B" and env["VLLM_CPU_KVCACHE_SPACE"] == "16"
+    assert main["securityContext"]["runAsUser"] == 1001
+
+
+@pytest.mark.parametrize("cli_args, env, profile", [
+    ([], [], None),                                                  # TP1: the launcher's own choice
+    (["--tensor-parallel-size", "2"], [], "vllm-xeon-bf16-tp2"),     # else it would pick its TP1 profile
+    (["--tensor-parallel-size", "4"], [], "vllm-xeon-bf16-tp4"),
+    (["--tensor-parallel-size", "3"], [], None),                     # none named: the launcher picks
+    (["--tensor-parallel-size", "2"], ["INFERENCE_PROFILE_ID=mine"], "mine"),   # the model's env wins
+])
+def test_iim_profile_follows_the_tensor_parallel_size(monkeypatch, cli_args, env, profile):
+    m, _ = _render(monkeypatch, "iim-qwen3-4b")
+    cat = Catalog(cli.MM_DIR / "models.yaml")
+    o = cli.parse_args(["deploy", "iim-qwen3-4b", *[a for e in env for a in ("--env", e)]])
+    main = _main(yaml.safe_load(renderer.manifest(m, cat, o, {}, m.cpu, cli_args)))
+    assert {e["name"]: e.get("value") for e in main["env"]}.get("INFERENCE_PROFILE_ID") == profile
+
+
+def test_iim_profile_only_where_the_launcher_runs(monkeypatch):
+    m, _ = _render(monkeypatch, "iim-qwen3-4b")
+    assert renderer.profile_env(m, ["--tensor-parallel-size", "2"]) == {"INFERENCE_PROFILE_ID": "vllm-xeon-bf16-tp2"}
+    no_launcher = dataclasses.replace(m, rt={k: v for k, v in m.rt.items() if k != "container"})
+    assert renderer.profile_env(no_launcher, ["--tensor-parallel-size", "2"]) == {}
+    assert renderer.profile_env(Model(name="v", namespace="ns", runtime="vllm"), ["--tensor-parallel-size", "2"]) == {}
+
+
+def test_iim_on_openshift_runs_kserves_vllm_command(monkeypatch):
+    # OpenShift AI's template starts vLLM itself; the IIM image ships vLLM, so the launcher is skipped there.
+    monkeypatch.setattr(config.platform, "is_openshift", lambda: True)
+    monkeypatch.setattr(renderer.platform, "is_openshift", lambda: True)
+    monkeypatch.setattr(renderer.platform, "adapt_llmisvc", lambda manifest: manifest)
+    m, doc = _render(monkeypatch, "iim-qwen3-4b")
+    main = _main(doc)
+    assert m.container == {} and m.serves_vllm and "command" not in main
+    assert m.run_as_user == "1001"                          # still the image's user: the download job writes as it
+    assert main["image"] == "docker.io/intel/inference-xeon-qwen-qwen3-4b:0.1.0"
+    assert {"--served-model-name", "--enable-auto-tool-choice", "--max-model-len"} <= set(main["args"])
+
+
+def test_server_override_uses_the_selected_runtimes_image(monkeypatch):
+    # An IIM model's own image belongs to iims; --server vllm takes that runtime's image and version.
+    m, doc = _render(monkeypatch, "iim-qwen3-4b", "--server", "vllm", "--server-version", "0.28.0")
+    assert m.image == "docker.io/vllm/vllm-openai-cpu:v0.28.0" and "command" not in _main(doc)
+    m, _ = _render(monkeypatch, "iim-qwen3-4b")
+    assert m.image == "docker.io/intel/inference-xeon-qwen-qwen3-4b:0.1.0"
+
+
+def test_explicit_default_server_keeps_the_models_image(tmp_path):
+    # servers: without default_server runs on the first server by name; naming that server must not drop the image.
+    catalog = tmp_path / "models.yaml"
+    catalog.write_text("""
+models:
+  - name: m
+    model_id: org/m
+    image: img/custom:1
+    servers: { vllm: {}, zz-other: {} }
+runtimes:
+  vllm: { versions: { "0.28.0": { image: img/vllm:0.28.0 } }, default_version: "0.28.0" }
+  zz-other: { image: img/other:1 }
+""")
+    cat = Catalog(catalog)
+    image = lambda *argv: config.resolve(cat, "m", cli.parse_args(["deploy", "m", *argv])).image
+    assert image() == image("--server", "vllm") == "img/custom:1"
+    assert image("--server", "zz-other") == "img/other:1"
+
+
+def test_launcher_args_env_cannot_be_overridden(monkeypatch):
+    # INFERENCE_ENGINE_ARGS is built from args:/--arg; setting it through env would desync the two.
+    m, _ = _render(monkeypatch, "iim-qwen3-4b")
+    o = cli.parse_args(["deploy", "iim-qwen3-4b", "--env", "INFERENCE_ENGINE_ARGS={}"])
+    with pytest.raises(SystemExit):
+        renderer.manifest(m, Catalog(cli.MM_DIR / "models.yaml"), o, {}, m.cpu, [])
+
+
+def test_args_json_rejects_positional_args():
+    m = Model(name="m", namespace="ns", runtime="iims")
+    assert json.loads(renderer.args_json(m, ["--a", "1", "--b", "--c=x"])) == {"a": "1", "b": True, "c": "x"}
+    # Multi-value options (nargs="+") become a list, which the IIM launcher expands to `--flag v1 v2`.
+    assert json.loads(renderer.args_json(m, ["--lora-modules", "a=x", "b=y", "--max-num-seqs", "8"])) == {
+        "lora-modules": ["a=x", "b=y"], "max-num-seqs": "8"}
+    assert json.loads(renderer.args_json(m, ["--k", "1", "--k", "2"])) == {"k": "2"}        # last wins
+    for positional in (["stray"], ["--k=v", "stray"]):                                     # --k=v is complete
+        with pytest.raises(SystemExit):
+            renderer.args_json(m, positional)
+
+
+def test_repeated_multi_value_flag_reaches_the_launcher_last_wins(monkeypatch):
+    # dedupe_args would drop the first --lora-modules but keep its trailing value; the launcher path skips it.
+    m, _ = _render(monkeypatch, "iim-qwen3-4b")
+    doc = yaml.safe_load(renderer.manifest(m, Catalog(cli.MM_DIR / "models.yaml"), cli.parse_args(["deploy", "x"]),
+                                           {}, m.cpu, ["--lora-modules", "a=x", "b=y", "--lora-modules", "c=z"]))
+    env = {e["name"]: e.get("value") for e in _main(doc)["env"]}
+    assert json.loads(env["INFERENCE_ENGINE_ARGS"])["lora-modules"] == "c=z"
 
 
 def test_ovms_autoscaling_uses_its_signal(monkeypatch):
@@ -929,10 +1045,13 @@ def test_servers_sorted_default_is_an_llmisvc():
     assert (m.runtime, m.kind) == ("openvino", "LLMInferenceService")
 
 
-def test_files_belong_to_the_serving_user():
+def test_files_belong_to_the_serving_user(monkeypatch):
+    monkeypatch.setenv("MM_PLATFORM", "kubernetes")  # platform detection elsewhere writes it to os.environ
     cat = Catalog(cli.MM_DIR / "models.yaml")
     assert config.resolve(cat, "qwen3-5-2b-ovms", cli.Options()).run_as_user == "5000"
-    assert config.resolve(cat, "qwen3-0-6b", cli.Options()).run_as_user == "1000"
+    assert config.resolve(cat, "qwen3-0-6b", cli.Options()).run_as_user == "1001"  # iims: the image's user
+    assert config.resolve(cat, "qwen3-0-6b", cli.parse_args(["deploy", "qwen3-0-6b", "--server", "vllm"])
+                          ).run_as_user == "1000"
 
 
 def test_vllm_only_features_rejected_for_ovms(monkeypatch, tmp_path):

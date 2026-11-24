@@ -283,7 +283,7 @@ def test_served_context_for_a_fixed_memory():
 
 
 def test_vlm_category_is_sized(hub):
-    m, s, main, env = _sized(*LLAMA[:2], "--category", "vlm", "--memory", "auto")
+    m, s, main, env = _sized(*LLAMA[:2], "--server", "vllm", "--category", "vlm", "--memory", "auto")
     assert s and main["resources"]["limits"]["memory"] == f"{s.memory_gi}Gi"
 
 
@@ -350,13 +350,13 @@ def _sized(*argv, catalog=None):
     return m, s, main, {e["name"]: e.get("value") for e in main["env"]}
 
 
-LLAMA = ("--hfid", "meta-llama/Llama-3.1-8B-Instruct", "--category", "llm")
+LLAMA = ("--hfid", "meta-llama/Llama-3.1-8B-Instruct", "--category", "llm", "--server", "vllm")   # sizing is vLLM-only; iims is the default
 
 
 def _catalog(tmp_path, **entry):
     catalog = tmp_path / "models.yaml"
     data = yaml.safe_load((cli.MM_DIR / "models.yaml").read_text())
-    data["models"] = [{"name": "m", "model_id": "meta-llama/Llama-3.1-8B-Instruct", "category": "llm", **entry}]
+    data["models"] = [{"name": "m", "model_id": "meta-llama/Llama-3.1-8B-Instruct", "category": "llm", "runtime": "vllm", **entry}]
     catalog.write_text(yaml.safe_dump(data))
     return catalog
 
@@ -414,7 +414,7 @@ def test_sizing_rejects(hub, capsys, argv, error):
 
 def test_static_values_below_the_weights_are_flagged(hub, capsys):
     # A gated repo without HF_TOKEN: no config.json, but its weight size is public.
-    m, s, main, env = _sized("--hfid", "org/gated", "--category", "llm")
+    m, s, main, env = _sized("--hfid", "org/gated", "--server", "vllm", "--category", "llm")
     assert main["resources"]["limits"]["memory"] == "16Gi" and round(s.needed_gib, 2) == 25.96
     assert "below the 26.0 GiB" in capsys.readouterr().err
     with pytest.raises(SystemExit):
@@ -424,7 +424,7 @@ def test_static_values_below_the_weights_are_flagged(hub, capsys):
 @pytest.mark.parametrize("argv, fits", [(["--memory", "32Gi"], True), (["--tp", "2", "--memory", "32Gi"], False),
                                         (["--memory", "64Gi", "--env", "VLLM_CPU_KVCACHE_SPACE=40"], True)])
 def test_static_values_fit_check(hub, capsys, argv, fits):
-    m, s, main, env = _sized("--hfid", "org/gated", "--category", "llm", *argv)
+    m, s, main, env = _sized("--hfid", "org/gated", "--server", "vllm", "--category", "llm", *argv)
     assert ("below the" not in capsys.readouterr().err) == fits
     if fits:
         policy.memory_gate(m, s)
@@ -456,14 +456,14 @@ def test_hfid_set_memory_wins(hub):
 def test_hfid_default_falls_back_when_it_cannot_size(hub, monkeypatch, capsys, repo, weights, reason):
     # Unlike an explicit --memory auto (test_sizing_rejects), the default deploys with the category memory, as before.
     monkeypatch.setattr(cli, "hf_weight_bytes", lambda r, _: weights)
-    m, s, main, env = _sized("--hfid", repo, "--category", "llm")
+    m, s, main, env = _sized("--hfid", repo, "--server", "vllm", "--category", "llm")
     assert not m.memory_auto and main["resources"]["limits"]["memory"] == "16Gi" and env["VLLM_CPU_KVCACHE_SPACE"] == "8"
     assert "--max-model-len" not in main["args"]
     err = capsys.readouterr().err
     assert f"cannot size {m.name}" in err and "using the llm default 16Gi" in err
 
 
-@pytest.mark.parametrize("argv, memory", [(["--category", "embed"], "16Gi"),
+@pytest.mark.parametrize("argv, memory", [(["--server", "vllm", "--category", "embed"], "16Gi"),
                                           (["--server", "openvino", "--category", "llm"], "16Gi")])
 def test_hfid_default_is_only_for_vllm_llm(hub, capsys, argv, memory):
     # memory: auto sizes vLLM llm models on CPU only; elsewhere --hfid keeps the category memory without an error.
@@ -708,7 +708,7 @@ def test_openshift_additional_args_are_sized(hub, monkeypatch):
 
 
 def test_version_0191_takes_the_category_kv(hub):
-    assert _sized("qwen3-0-6b", "--server-version", "0.19.1")[3]["VLLM_CPU_KVCACHE_SPACE"] == "8"
+    assert _sized("qwen3-0-6b", "--server", "vllm", "--server-version", "0.19.1")[3]["VLLM_CPU_KVCACHE_SPACE"] == "8"
 
 
 @pytest.mark.parametrize("memory, needed, env, aborts", [

@@ -122,6 +122,7 @@ _llm_ai_gateway_url: >-
 # namespace. An admission policy admits only pods built from the published
 # template (pinned image, fixed command, catalogue name), so creating a Job
 # there cannot run anything else with model-manager's rights.
+# Applied only when the Headlamp Deployment exists (ui_deploy_check.yaml).
 llm_services_ui_deploy: "{{ headlamp_enabled | default(false) | bool }}"
 llm_services_mm_namespace: "model-manager"
 # Stock image with kubectl, Python and PyYAML; model-manager is mounted from a

@@ -132,7 +132,7 @@ Call the model. The `model` field selects which one answers:
 
 ```bash
 curl -s --noproxy '*' \
-  --cacert env/local/logs/ai-solutions-ca.crt \
+  --cacert env/local/logs/toolkit-manager-ca.crt \
   --resolve "$GATEWAY_DOMAIN:443:$GATEWAY_IP" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
@@ -161,7 +161,7 @@ GATEWAY_IP=$(kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/ow
 DOMAIN=$(yq '.base_domain_name' env/local/global_config.yaml)
 MK=$(kubectl get secret litellm-master-key -n litellm -o jsonpath='{.data.master_key}' | base64 -d)
 
-curl -s --noproxy '*' --cacert env/local/logs/ai-solutions-ca.crt --resolve "litellm.$DOMAIN:443:$GATEWAY_IP" \
+curl -s --noproxy '*' --cacert env/local/logs/toolkit-manager-ca.crt --resolve "litellm.$DOMAIN:443:$GATEWAY_IP" \
   -H "Authorization: Bearer $MK" -H "Content-Type: application/json" \
   -d '{"model":"qwen3-0-6b","messages":[{"role":"user","content":"Hello!"}],"max_tokens":64}' \
   "https://litellm.$DOMAIN/v1/chat/completions"

@@ -95,8 +95,6 @@ curl --cacert env/<env>/logs/ai-solutions-ca.crt \
 | `direct` | `HTTPRoute/direct-<model>` → `Service/<model>-kserve-workload-svc:8000` | Embedding and rerank models (default), or explicit `routing: direct` |
 | `aigateway` | `AIGatewayRoute/aigw-<model>` → `AIServiceBackend/<model>` → the workload Service | Only when asked for |
 
-With `ai_gateway_provider: agentgateway` the routes are plain `HTTPRoute`s with the same backends.
-
 **Kubernetes resources:**
 - `Gateway/ai-gateway` in `llm-inference` (GatewayClass `inference-pool-with-aigwroute`)
 - `AIGatewayRoute/aigw-<model>` in the model's namespace (header-based match, no hostname)

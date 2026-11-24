@@ -86,7 +86,7 @@ A successful run ends with an `INSTALLATION COMPLETE` banner.
 This toolkit's settings live in `env/local/config.inference.yaml`. `init` copies it from
 this repo's [`config.yaml`](config.yaml), and the install reads your copy. Edit it, then
 run `install inference` again. See [Configuration](docs/configuration/configuration.md) for every
-option, including the `envoy` / `agentgateway` choice and the cluster CPU-pinning policy.
+option, including the Envoy AI Gateway version and the cluster CPU-pinning policy.
 
 ### Step 2 — Deploy a model
 

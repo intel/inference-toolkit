@@ -11,7 +11,6 @@ stack and the CLI that deploys and manages models at runtime.
 |-----------|------|---------|
 | **KServe** | `roles/kserve/` | Model-serving platform — KServe controller, `LLMInferenceService` CRD, LWS (LeaderWorkerSet) operator |
 | **Envoy AI Gateway** | `roles/envoy_ai_gateway/` | The internal `ai-gateway` — reads `"model"` from the request and routes it to that model via `AIGatewayRoute`; publishes `inference.<domain>` in `jwt` mode |
-| **agentgateway** | `roles/agentgateway/` | Alternative AI gateway — native Gateway API `HTTPRoute` → `InferencePool`, plus MCP / A2A support |
 | **LiteLLM** | `roles/litellm/`, `charts/litellm-helm/` | OpenAI-compatible proxy — virtual API keys, per-key budgets and rate limits, response cache (Valkey), content-safety guardrail, optional hybrid router |
 | **Langfuse** | `roles/langfuse/` | LLM observability — request traces, token usage, prompt management |
 | **LLM services** | `roles/llm_services/` | Provisions the inference namespace (`llm-inference`) and the model store, the Headlamp model-deploy jobs, and runs the model auto-deploy phase |
@@ -27,22 +26,20 @@ under `inference`, and Toolkit Manager runs them in dependency order.
 | Role | Enabled when | Depends on |
 |------|--------------|------------|
 | `keycloak_config` | `keycloak_enabled` (default `true`; both auth modes) | — |
-| `envoy_ai_gateway` | `kserve_enabled` and `ai_gateway_provider == envoy`, not on OpenShift | — |
-| `agentgateway` | `ai_gateway_provider == agentgateway`, not on OpenShift | — |
-| `kserve` | `kserve_enabled` (default `true`) | `envoy_ai_gateway`, `agentgateway` |
+| `envoy_ai_gateway` | `kserve_enabled`, not on OpenShift | — |
+| `kserve` | `kserve_enabled` (default `true`) | `envoy_ai_gateway` |
 | `litellm` | `auth_type == litellm_vkey` or `litellm_enabled` | `postgresql` (platform) |
 | `langfuse` | `litellm` is enabled and `langfuse_enabled` (default `true`) | `litellm`, `postgresql` |
 | `llm_services` | `kserve_enabled` (default `true`) | `kserve` |
-| `vllm_sr` | `vllm_sr_enabled` (default `false`) and `ai_gateway_provider == envoy` | `llm_services` |
+| `vllm_sr` | `vllm_sr_enabled` (default `false`) | `llm_services` |
 
 > [!NOTE]
 > `nri_cpu_balloons` is **not** here — it lives in the Toolkit Manager repo, because it
 > configures kubelet-level settings on the nodes. See
 > [CPU Pinning & NUMA](cpu-pinning.md).
 
-Because the gateway roles are mutually exclusive on `ai_gateway_provider`, `kserve`
-depends on both: whichever one is enabled runs first, and the other is skipped. On OpenShift
-both are skipped: models are routed through the OpenShift AI inference Gateway.
+`kserve` runs after `envoy_ai_gateway`. On OpenShift the AI gateway is skipped: models are
+routed through the OpenShift AI inference Gateway.
 
 ## Two gateways, two concerns
 

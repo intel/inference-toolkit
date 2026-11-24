@@ -117,14 +117,11 @@ itself never needs editing:
 | `guard_max_tokens` | `32` | Generation cap for the verdict. Verdicts are a few tokens; a larger cap only lengthens the blocking hook. |
 | `guard_timeout` | `60` | Guard call timeout (LiteLLM clamps this to 60s). |
 
-The derived endpoint is the AI gateway's data-plane Service for the active
-`ai_gateway_provider`, followed by the guard model's route
-(`/<llm_services_namespace>/<guardrail_model>/v1/chat/completions`):
-
-| `ai_gateway_provider` | `guard_service_url` (defaults) |
-|---|---|
-| `envoy` | `http://ai-gateway.envoy-gateway-system.svc.cluster.local/llm-inference/qwen3guard/v1/chat/completions` — the Service runs beside the Envoy Gateway controller, so `envoy-gateway-system` is replaced by that namespace when the platform uses an existing Envoy Gateway elsewhere |
-| `agentgateway` | `http://ai-gateway.llm-inference.svc.cluster.local/llm-inference/qwen3guard/v1/chat/completions` — the Service runs in the agentgateway gateway namespace (`ai_gateway_namespace`, the model namespace by default) |
+The derived endpoint is the AI gateway's data-plane Service followed by the guard model's route
+(`/<llm_services_namespace>/<guardrail_model>/v1/chat/completions`), by default
+`http://ai-gateway.envoy-gateway-system.svc.cluster.local/llm-inference/qwen3guard/v1/chat/completions`.
+The Service runs beside the Envoy Gateway controller, so `envoy-gateway-system` is replaced by that
+namespace when the platform uses an existing Envoy Gateway elsewhere.
 
 ```yaml
 # e.g. point the guardrail at a guard model in another namespace

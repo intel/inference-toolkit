@@ -76,7 +76,7 @@ kubectl logs -n llm-inference job/<download-job-name>
 
 # Gateway and route state
 kubectl get gateway,httproute -A
-kubectl get aigatewayroute -A          # ai_gateway_provider=envoy
+kubectl get aigatewayroute -A
 ```
 
 For cluster, storage, certificate, and DNS problems, see the

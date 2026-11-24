@@ -44,7 +44,6 @@ No. The defaults deploy a working inference stack. Reach for this file when:
 
 | If you want to… | Change |
 |---|---|
-| Use agentgateway instead of Envoy AI Gateway | `ai_gateway_provider: "agentgateway"` |
 | Authenticate API clients with LiteLLM virtual keys | `auth_type: "litellm_vkey"` |
 | Add LiteLLM alongside Keycloak JWT auth | `litellm_enabled: true` |
 | Turn the content-safety guardrail off (on with `litellm_vkey`) | `guardrails_enabled: false` |
@@ -53,7 +52,7 @@ No. The defaults deploy a working inference stack. Reach for this file when:
 | Apply changed LiteLLM settings to an installed release | `litellm_reconcile: true` |
 | Auto-deploy catalog models during install | `llm_services_deploy_models: true` |
 | Make an auto-deploy failure abort the install | `model_deploy_strict: true` |
-| Pin a component version | `kserve_version`, `litellm_version`, `envoy_ai_gateway_version`, `agentgateway_version` |
+| Pin a component version | `kserve_version`, `litellm_version`, `envoy_ai_gateway_version` |
 | Change a service hostname | `inference_hostname`, `litellm_hostname`, `langfuse_hostname` |
 | Change CPU pinning behaviour | `kubernetes_cpu_policy` |
 | Serve models from a different namespace | `llm_services_namespace` |
@@ -61,28 +60,13 @@ No. The defaults deploy a working inference stack. Reach for this file when:
 
 ## AI gateway
 
-Which in-cluster AI gateway sits behind the edge gateway and dispatches to the KServe
-model backends. Both speak the OpenAI protocol on the same unified URL and route to
-`InferencePool`/`Service` backends — only the data plane and CRDs differ.
+Envoy AI Gateway sits behind the edge gateway and dispatches requests to the KServe
+model backends (`AIGatewayRoute` CRDs, EPP endpoint picker), on one OpenAI-compatible URL.
 
 ```yaml
-ai_gateway_provider: "envoy"          # envoy | agentgateway
-```
-
-| Value | What it deploys |
-|---|---|
-| `envoy` (default) | Envoy AI Gateway — `AIGatewayRoute` CRDs, EPP endpoint picker |
-| `agentgateway` | agentgateway — native Gateway API `HTTPRoute` → `InferencePool`, plus MCP / A2A support for Intel® Agent Toolkit |
-
-```yaml
-# Envoy AI Gateway (when ai_gateway_provider=envoy). Unset, it follows the
-# platform Envoy Gateway: 1.9 → 1.2.1, 1.8 → 1.1.0, 1.7 → 0.6.0.
+# Unset, it follows the platform Envoy Gateway: 1.9 → 1.2.1, 1.8 → 1.1.0, 1.7 → 0.6.0.
 # envoy_ai_gateway_version: "1.2.1"
 envoy_ai_gateway_namespace: "envoy-ai-gateway-system"
-
-# agentgateway (when ai_gateway_provider=agentgateway)
-# agentgateway_version: "1.3.1"
-# agentgateway_namespace: "agentgateway-system"
 ```
 
 ## Hostnames
@@ -187,7 +171,7 @@ Both are off by default and leave direct model calls unchanged.
 #   SIMPLE:  [qwen3-4b]
 #   COMPLEX: [qwen3-coder-30b]
 
-# vLLM Semantic Router (ai_gateway_provider: envoy only)
+# vLLM Semantic Router
 # vllm_sr_enabled: true
 # vllm_sr_route_models: [qwen3-4b, qwen3-coder-30b]
 # vllm_sr_litellm_model_name: "semantic-router"   # with auth_type=litellm_vkey

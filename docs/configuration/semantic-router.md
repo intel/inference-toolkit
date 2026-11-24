@@ -12,8 +12,7 @@ For more information, see [vllm-semantic-router.com](https://vllm-semantic-route
 The router is opt-in (`vllm_sr_enabled`, off by default) and is deployed from the
 upstream chart vendored at [`charts/vllm-sr`](../../charts/vllm-sr) (see its `NOTICE`).
 It plugs into Envoy AI Gateway (`AIGatewayRoute`, an ext_proc filter applied through an
-`EnvoyPatchPolicy`), so it runs only with `ai_gateway_provider: envoy`; with
-`agentgateway` the component is skipped.
+`EnvoyPatchPolicy`).
 
 ---
 
@@ -60,8 +59,7 @@ elsewhere. `vllm_sr_expose` (`envoy` | `litellm` | `both`) overrides the choice.
 
 ### Prerequisites
 
-- Intel® Inference Toolkit is installed with `ai_gateway_provider: envoy`, with at least one
-  model deployed
+- Intel® Inference Toolkit is installed, with at least one model deployed
 - The models the router may pick are the chat models deployed in the model namespace,
   discovered at install time, or the ones listed in `vllm_sr_route_models`
 - Envoy Gateway runs with `EnvoyPatchPolicy` enabled
@@ -268,7 +266,7 @@ Set these in `env/<env>/config.inference.yaml`:
 
 | Setting | Description |
 |-------|-------------|
-| `vllm_sr_enabled` | Deploy the router (default `false`; needs `ai_gateway_provider: envoy`) |
+| `vllm_sr_enabled` | Deploy the router (default `false`) |
 | `vllm_sr_expose` | `envoy`, `litellm` or `both` (default: `litellm` with `auth_type: litellm_vkey`, else `envoy`) |
 | `vllm_sr_route_models` | Deployed models the router may pick from (default: discovered at install time) |
 | `vllm_sr_default_model` | Model served when no other decision matches (the first routed model if it is not routed) |

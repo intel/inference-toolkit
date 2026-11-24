@@ -105,7 +105,7 @@ with `routing_mode: path`; `DOMAIN` and `GATEWAY_IP` as in
 `vllm-sr/auto` with Intel® Agent Toolkit):
 
 ```bash
-curl -s --noproxy '*' --cacert env/<env>/logs/ai-solutions-ca.crt \
+curl -s --noproxy '*' --cacert env/<env>/logs/toolkit-manager-ca.crt \
   --resolve "litellm.${DOMAIN}:443:${GATEWAY_IP}" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <LITELLM_KEY>" \
@@ -119,7 +119,7 @@ curl -s --noproxy '*' --cacert env/<env>/logs/ai-solutions-ca.crt \
 You can also call a model directly (bypasses routing):
 
 ```bash
-curl -s --noproxy '*' --cacert env/<env>/logs/ai-solutions-ca.crt \
+curl -s --noproxy '*' --cacert env/<env>/logs/toolkit-manager-ca.crt \
   --resolve "litellm.${DOMAIN}:443:${GATEWAY_IP}" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <LITELLM_KEY>" \
@@ -161,7 +161,7 @@ Prerequisites for the dashboard host:
   `/etc/hosts` on every client machine).
 - **TLS certificate:** with `gateway_tls_mode: selfsigned` a certificate Toolkit Manager
   installs covers it (one of its own, or the wildcard one when services share the wildcard
-  listener), chained to its CA (`env/<env>/logs/ai-solutions-ca.crt`). A custom certificate
+  listener), chained to its CA (`env/<env>/logs/toolkit-manager-ca.crt`). A custom certificate
   must include the host.
 - **Corporate proxy:** add `vllm-sr.<base_domain_name>` to the browser/OS proxy bypass
   list, as for the other gateway hosts.
@@ -321,7 +321,7 @@ and a matching decision as described in
 Send a prompt and check which model answered (the `model` field of the response):
 
 ```bash
-curl -s --noproxy '*' --cacert env/<env>/logs/ai-solutions-ca.crt \
+curl -s --noproxy '*' --cacert env/<env>/logs/toolkit-manager-ca.crt \
   --resolve "litellm.${DOMAIN}:443:${GATEWAY_IP}" \
   -H "Authorization: Bearer <LITELLM_KEY>" \
   -H "Content-Type: application/json" \

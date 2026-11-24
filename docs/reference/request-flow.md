@@ -60,7 +60,7 @@ In `litellm_vkey` mode, `eg-gateway` routes to LiteLLM (which validates the virt
 ### Step 1: Client → eg-gateway (TLS + JWT Validation)
 
 ```
-curl --cacert env/<env>/logs/ai-solutions-ca.crt \
+curl --cacert env/<env>/logs/toolkit-manager-ca.crt \
   https://inference.inteltoolkits.ai/v1/chat/completions \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
@@ -137,7 +137,7 @@ No caching or Langfuse tracing in this path. Add LiteLLM with `litellm_enabled: 
 ### Step 1: Client → eg-gateway (TLS Termination)
 
 ```
-curl --cacert env/<env>/logs/ai-solutions-ca.crt \
+curl --cacert env/<env>/logs/toolkit-manager-ca.crt \
   https://litellm.inteltoolkits.ai/v1/chat/completions \
   -H "Authorization: Bearer sk-<virtual-key>" \
   -d '{"model": "llama3-8b-awq", "messages": [...]}'

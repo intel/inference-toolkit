@@ -1,6 +1,7 @@
 """Model catalog (models.yaml) and resolution of a catalog entry or --hfid into a Model."""
 from __future__ import annotations
 
+import fnmatch
 import json
 import os
 import re
@@ -81,16 +82,68 @@ def load_yaml(path: Path) -> Any:
         abort(f"Cannot read {path}: {e}")
 
 
-def hf_model_info(model_id: str, proxy: str) -> dict:
-    """HuggingFace model metadata, or {} when the Hub is unreachable."""
-    cmd = ["curl", "-sf", "--max-time", "10", *(["--proxy", proxy] if proxy else []),
-           f"https://huggingface.co/api/models/{model_id}"]
-    r = subprocess.run(cmd, capture_output=True, text=True, check=False)  # nosec B603
+_HUB_UNREACHABLE = set()  # proxies whose Hub connection failed: later calls through them fail at once
+_CONNECT_ERRORS = (5, 6, 7, 28, 35)  # curl: proxy or host unresolved, connect refused, timeout, TLS
+
+
+@cache
+def _hf_json(url: str, proxy: str, token: str) -> dict:
+    """A HuggingFace JSON document, or {} when unreachable. The token reaches curl on stdin (-H @-), never in its
+    arguments, so it never shows in a process listing."""
+    if proxy in _HUB_UNREACHABLE:
+        return {}
+    cmd = ["curl", "-sfL", "--max-time", "10", *(["--proxy", proxy] if proxy else []),
+           *(["-H", "@-"] if token else []), url]
+    r = subprocess.run(cmd, input=f"Authorization: Bearer {token}\n" if token else None,  # nosec B603: argv list, no shell
+                       capture_output=True, text=True, check=False)
+    if r.returncode in _CONNECT_ERRORS:
+        _HUB_UNREACHABLE.add(proxy)
     try:
-        data = json.loads(r.stdout) if r.returncode == 0 else {}
+        data = json.loads(r.stdout) if r.returncode == 0 and r.stdout else {}
     except ValueError:
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def hub_unreachable(proxy: str) -> bool:
+    return proxy in _HUB_UNREACHABLE
+
+
+def _token(token: str | None) -> str:
+    return os.environ.get("HF_TOKEN", "") if token is None else token
+
+
+def hf_model_info(model_id: str, proxy: str, blobs: bool = True, token: str | None = None) -> dict:
+    """HuggingFace model metadata, or {} when the Hub is unreachable. It always lists every file's size (?blobs=true),
+    so one fetch serves the category, the weight size and the download check; `blobs` is kept for callers. The token
+    defaults to HF_TOKEN; private and gated repos need it."""
+    del blobs
+    return _hf_json(f"https://huggingface.co/api/models/{model_id}?blobs=true", proxy, _token(token))
+
+
+def hf_config(model_id: str, proxy: str) -> dict | None:
+    """The repo's config.json; None when unreadable (unreachable, or gated without HF_TOKEN)."""
+    return _hf_json(f"https://huggingface.co/{model_id}/resolve/main/config.json", proxy, _token(None)) or None
+
+
+def hf_weight_bytes(model_id: str, proxy: str) -> int:
+    """Bytes of the repo-root safetensors the server loads (subfolders such as original/ or onnx/ hold other formats;
+    consolidated.* is Mistral's duplicate); 0 if unknown. Public even for a gated repo."""
+    names = ((text(pick(f, "rfilename")), f) for f in pick(hf_model_info(model_id, proxy), "siblings", [])
+             if isinstance(f, dict))
+    return sum(int(pick(f, "size", 0)) for name, f in names
+               if name.endswith(".safetensors") and "/" not in name and not name.startswith("consolidated"))
+
+
+# A copy of the weights in the publisher's own format (Meta's original/): vLLM loads the safetensors.
+HF_EXCLUDE = "original/*"
+
+
+def hf_download_bytes(info: dict) -> int:
+    """Bytes `hf download --exclude HF_EXCLUDE` fetches, from hf_model_info(blobs=True); 0 when unknown."""
+    files = info.get("siblings") or []
+    return sum(int(f.get("size") or 0) for f in files
+               if isinstance(f, dict) and not fnmatch.fnmatch(str(f.get("rfilename", "")), HF_EXCLUDE))
 
 
 class Catalog:
@@ -144,6 +197,59 @@ def _merge(base: dict, overlay: dict) -> dict:
     return out
 
 
+@dataclass(frozen=True)
+class SizingConstants:
+    """The estimated parts of memory: auto (docs/reference/memory_sizing.md#why-these-constants), measured on Xeon with
+    vLLM 0.24 / 0.28. Overridden per runtime by runtimes.<name>.sizing in models.yaml or runtimes/<name>/values.yaml."""
+    overhead_gib: float = 3         # runtime per TP worker: its process, kernel scratch, one batch's activations
+    headroom: float = 1.15          # on weights + load + runtime; the KV pool is allocated exactly, so none on it
+    margin_gib: float = 2           # per pod: small models, page cache in the cgroup
+    kv_min_gib: int = 2             # per worker: vLLM needs one full request; short-context models some concurrency
+    quantized_repack: float = 0.4   # x the quantized weights: repacked for the CPU kernel, both copies briefly resident
+    multimodal_gib: float = 4       # vision / audio encoder profiling at start-up
+    video_gib_per_1k: float = 0.2   # native-video (temporal patch) profiling, per 1K tokens of context
+
+    def overrides(self) -> dict:
+        """The values that differ from the built-in defaults."""
+        default = SizingConstants()
+        return {k: v for k, v in vars(self).items() if v != getattr(default, k)}
+
+
+def sizing_constants(block: Any, where: str) -> SizingConstants:
+    """runtimes.<name>.sizing: any of SizingConstants' fields; unknown keys and out-of-range values abort."""
+    if block in (None, "", {}):
+        return SizingConstants()
+    if not isinstance(block, dict):
+        abort(f"{where} must be a mapping of {', '.join(vars(SizingConstants()))}")
+    values = {}
+    for key, value in block.items():
+        if key not in vars(SizingConstants()):
+            abort(f"{where}.{key} is not a sizing setting; use {', '.join(vars(SizingConstants()))}")
+        lowest = 1 if key in ("headroom", "kv_min_gib") else 0
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value < lowest \
+                or (key == "kv_min_gib" and not isinstance(value, int)):
+            kind = "a whole number" if key == "kv_min_gib" else "a number"
+            abort(f"{where}.{key} must be {kind} >= {lowest}, got: {value!r}")
+        values[key] = value
+    return SizingConstants(**values)
+
+
+@dataclass
+class Sizing:
+    """Memory of one pod for a vLLM model (core/sizer.py)."""
+    weights_gib: float
+    kv_gib: int                               # VLLM_CPU_KVCACHE_SPACE, per TP worker
+    tp: int
+    max_model_len: int
+    needed_gib: float                         # weights + load + tp x (kv + overhead)
+    memory_gi: int                            # (weights + load + tp x overhead) x 1.15 + tp x kv + 2: the limit
+    load_gib: float = 0.0                     # load-time allowances: quantized repack, multimodal encoders
+    streams: int = 1                          # full-context requests the KV holds: kv_streams (default 1)
+    kv_by_tp: dict = field(default_factory=dict)  # sized KV per worker at each valid TP, for the NUMA hint
+    load_parts: dict = field(default_factory=dict)  # load_gib by allowance name, for the deploy log
+    k: SizingConstants = field(default_factory=SizingConstants)  # the constants it was sized with
+
+
 @dataclass
 class Model:
     name: str
@@ -153,6 +259,7 @@ class Model:
     draft_model_id: str = ""                  # speculative-decoding draft, fetched to <weights>/draft
     runtime: str = ""
     rt: dict = field(default_factory=dict)    # merged runtime config
+    sizing_k: SizingConstants = field(default_factory=SizingConstants)  # runtimes.<name>.sizing
     ver: dict = field(default_factory=dict)   # selected runtime version entry (env/args deltas)
     version: str = ""                         # "" for runtimes without a versions: map
     runtime_image: str = ""
@@ -161,7 +268,14 @@ class Model:
     routing: str = ""
     cpu: str = ""
     memory: str = ""
+    memory_auto: bool = False                 # memory: auto: sized from the model (core/sizer.py)
+    memory_auto_default: bool = False         # memory_auto as --hfid's default: falls back to `memory` if unsizable
+    kv_streams: str = ""                      # memory: auto: full-context requests the KV cache holds (default 1)
+    kv_cache_gb: str = ""                     # sized VLLM_CPU_KVCACHE_SPACE
+    max_model_len: str = ""                   # sized --max-model-len
+    sizing: dict = field(default_factory=dict)  # memory: auto's inputs + sized context, kept as CR annotations
     replicas: str = "1"
+    gpus: str = ""
     min_replicas: str = ""
     max_replicas: str = ""
     scale_target: str = ""                    # per-replica threshold of the runtime's signal
@@ -186,8 +300,14 @@ class Model:
 
     @property
     def serves_vllm(self) -> bool:
-        """vLLM's API: KServe's vLLM command, or a launcher that hands it vLLM args (args_env)."""
-        return not self.container or bool(pick(self.container, "args_env"))
+        """vLLM's API: KServe's vLLM command, a launcher that hands it vLLM args (args_env), or a vLLM image
+        whose container takes --chat-template (chat_template: true, e.g. vllm-xpu)."""
+        return not self.container or bool(pick(self.container, "args_env") or pick(self.container, "chat_template"))
+
+    @property
+    def vllm_on_cpu(self) -> bool:
+        """KServe's vLLM command (no runtime container) on a CPU device: what VLLM_CPU_KVCACHE_SPACE sizing models."""
+        return not self.container and text(pick(self.rt, "device", "cpu")) == "cpu"
 
     @property
     def run_as_user(self) -> str:
@@ -197,6 +317,16 @@ class Model:
     @property
     def cat(self) -> dict:
         return pick(pick(self.rt, "categories", {}), self.category or "llm", {})
+
+    @property
+    def gpu(self) -> bool:
+        """A device: gpu runtime (vllm-cuda): accelerator limits, /dev/shm, toleration, no CPU pinning."""
+        return text(pick(self.rt, "device", "cpu")) == "gpu"
+
+    @property
+    def accel_resource(self) -> str:
+        """The extended resource a GPU runtime's pod requests: its runtime's accelerator_resource."""
+        return text(pick(self.rt, "accelerator_resource"))
 
     def check(self) -> None:
         """Reject names/ids that are not safe to embed in manifests and the download script."""
@@ -224,6 +354,7 @@ def resolve(catalog: Catalog, target: str, o: Any) -> Model:
         abort("No model specified. Use: model-manager <command> <model-name> or --hfid <hf/repo>")
 
     m.rt = catalog.runtime_config(m.runtime)
+    m.sizing_k = sizing_constants(pick(m.rt, "sizing"), f"runtimes.{m.runtime}.sizing")
     m.kind = m.kind or text(pick(m.rt, "kind", "LLMInferenceService"))
     _select_image(catalog, m, o)
 
@@ -240,8 +371,19 @@ def resolve(catalog: Catalog, target: str, o: Any) -> Model:
 
     defaults = pick(m.cat, "defaults", {})
     m.cpu = o.cpu or m.cpu or text(pick(defaults, "cpu", 8))
-    m.memory = o.memory or m.memory or text(pick(defaults, "memory", "16Gi"))
+    m.memory_auto = (o.memory or m.memory) == "auto"
+    m.memory = "" if m.memory_auto else o.memory or m.memory
+    # --hfid has no catalog memory to keep, so it is sized when it can be; the category default stays the fallback.
+    m.memory_auto_default = bool(o.id and not m.memory and not m.memory_auto and m.vllm_on_cpu
+                                 and m.category == "llm")
+    m.memory_auto = m.memory_auto or m.memory_auto_default
+    m.memory = m.memory or text(pick(defaults, "memory", "16Gi"))
+    m.kv_streams = text(getattr(o, "kv_streams", "")) or m.kv_streams
+    if m.kv_streams and not (is_uint(m.kv_streams) and int(m.kv_streams) > 0):
+        abort(f"Model '{m.name}' kv_streams must be a positive integer, got: {m.kv_streams}")
     m.replicas = o.replicas or m.replicas
+    if m.gpu:
+        m.gpus = o.gpus or o.tp or m.gpus or text(pick(defaults, "gpus", 1))
     m.node = o.node or m.node
     if o.routing:
         m.routing = o.routing
@@ -267,7 +409,8 @@ def _from_catalog(catalog: Catalog, name: str, o: Any) -> Model:
               "as a block scalar.")
     m = Model(name=name, namespace=text(pick(e, "namespace", catalog.namespace)), kind=text(pick(e, "kind")),
               model_id=text(pick(e, "model_id")), draft_model_id=text(pick(e, "draft_model_id")),
-              cpu=text(pick(e, "cpu")), memory=text(pick(e, "memory")),
+              cpu=text(pick(e, "cpu")), memory=text(pick(e, "memory")), gpus=text(pick(e, "gpus")),
+              kv_streams=text(pick(e, "kv_streams")),
               replicas=text(pick(e, "replicas", catalog.replicas)), category=text(pick(e, "category")),
               image=text(pick(e, "image")), node=text(pick(e, "node")), routing=text(pick(e, "routing")),
               chat_template=text(pick(e, "chat_template")).rstrip("\n"),  # as legacy $(jq) did
@@ -378,7 +521,9 @@ def _select_image(catalog: Catalog, m: Model, o: Any) -> None:
 def _repo_roots() -> list[Path]:
     """Where to look for solution configs: MM_GLOBAL_CONFIG_SEARCH, the enclosing repo, sibling checkouts."""
     roots = [Path(p) for p in (os.environ.get("MM_GLOBAL_CONFIG_SEARCH") or "").split(":") if p]
-    roots += [d for d in (MM_DIR, *list(MM_DIR.parents)[:-1]) if (d / "es_auto_installer.sh").is_file()][:1]
+    # toolkit_manager.sh, or es_auto_installer.sh (its former name) in an older checkout.
+    roots += [d for d in (MM_DIR, *list(MM_DIR.parents)[:-1])
+              if any((d / n).is_file() for n in ("toolkit_manager.sh", "es_auto_installer.sh"))][:1]
     return roots + sorted(p for p in MM_DIR.parent.parent.glob("*ai-solutions*") if p.is_dir())
 
 

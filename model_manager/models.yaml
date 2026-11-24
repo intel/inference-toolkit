@@ -297,6 +297,81 @@ models:
     model_id: BAAI/bge-reranker-base
     category: rerank
 
+  # ── GPU: NVIDIA (vllm-cuda); GPU pre-flight: docs/deploy/deploy_models.md#the-gpu-pre-flight ──
+
+  # LLM — small Qwen3 on 1 NVIDIA GPU. Smoke test for the GPU path.
+  - name: qwen3-0-6b-cuda
+    model_id: Qwen/Qwen3-0.6B
+    category: llm
+    runtime: vllm-cuda
+    gpus: 1
+    autodeploy: false
+
+  # LLM — Llama 3.1 70B on 8 NVIDIA GPUs (TP=8). Gated model: needs HF_TOKEN.
+  - name: llama-3-1-70b-instruct-cuda
+    model_id: meta-llama/Llama-3.1-70B-Instruct
+    category: llm
+    runtime: vllm-cuda
+    gpus: 8
+    memory: 128Gi
+    args: [ --max-model-len, "131072", --enable-auto-tool-choice, --tool-call-parser, llama3_json ]
+    autodeploy: false
+
+  # LLM — NVIDIA Nemotron 3.5 Lightning 30B-A3B (hybrid Mamba-MoE) on 1 NVIDIA GPU. Flags per the model card.
+  - name: nemotron-3-5-lightning-30b-a3b-cuda
+    model_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16
+    category: llm
+    runtime: vllm-cuda
+    gpus: 1
+    args: [ --max-model-len, "262144", --mamba-backend, flashinfer,
+            --mamba-ssm-cache-dtype, float16, --enable-mamba-cache-stochastic-rounding, --mamba-cache-philox-rounds, "5",
+            --enable-auto-tool-choice, --tool-call-parser, qwen3_coder, --reasoning-parser, nemotron_v3 ]
+    autodeploy: false
+
+  # LLM — NVIDIA Nemotron 3 Super 120B-A12B FP8 on 4 NVIDIA GPUs (TP=4, expert parallel); Hopper or Blackwell.
+  - name: nemotron-3-super-120b-a12b-cuda
+    model_id: nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8
+    category: llm
+    runtime: vllm-cuda
+    gpus: 4
+    memory: 128Gi
+    args: [ --max-model-len, "262144", --kv-cache-dtype, fp8, --enable-expert-parallel, --mamba-ssm-cache-dtype, float32,
+            --enable-auto-tool-choice, --tool-call-parser, qwen3_coder, --reasoning-parser, nemotron_v3 ]
+    autodeploy: false
+
+  # LLM — NVIDIA Nemotron 3 Ultra 550B-A55B NVFP4 on 8 NVIDIA GPUs (TP=8, expert parallel). NVFP4 needs
+  # Blackwell (B200, B300); it does not run on Hopper.
+  - name: nemotron-3-ultra-550b-a55b-cuda
+    model_id: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4
+    category: llm
+    runtime: vllm-cuda
+    gpus: 8
+    memory: 384Gi
+    args: [ --max-model-len, "262144", --kv-cache-dtype, fp8, --enable-expert-parallel, --mamba-backend, flashinfer,
+            --mamba-ssm-cache-dtype, float16, --enable-mamba-cache-stochastic-rounding, --mamba-cache-philox-rounds, "5",
+            --enable-auto-tool-choice, --tool-call-parser, qwen3_coder, --reasoning-parser, nemotron_v3 ]
+    autodeploy: false
+
+  # ── GPU: Intel Arc Pro B-Series (vllm-xpu); args from the B70 qualification runs, single GPU only ──
+
+  - name: vllm-xpu-llama-3-1-8b
+    model_id: meta-llama/Llama-3.1-8B-Instruct
+    category: llm
+    runtime: vllm-xpu
+    gpus: 1
+    memory: 32Gi
+    args: [ --dtype, bfloat16, --disable-sliding-window, --max-model-len, "9216" ]
+    autodeploy: false
+
+  - name: vllm-xpu-gpt-oss-20b
+    model_id: openai/gpt-oss-20b
+    category: llm
+    runtime: vllm-xpu
+    gpus: 1
+    memory: 32Gi
+    args: [ --dtype, auto, --disable-sliding-window, --max-model-len, "9216", --max-num-batched-tokens, "9216" ]
+    autodeploy: false
+
 runtimes:
 
   # IIM launcher (python -m inference_runtime.cli serve); plumbing in runtimes/iims.
@@ -321,6 +396,7 @@ runtimes:
   # Upstream vLLM CPU images: pick with --server vllm [--server-version V].
   vllm:
     default_version: "0.28.0"
+    # sizing: memory: auto constants, docs/reference/memory_sizing.md#tuning-the-constants
     env:
       USER: "vllm"
       VLLM_CPU_NUM_OF_RESERVED_CPU: "1"
@@ -328,12 +404,12 @@ runtimes:
       VLLM_NO_USAGE_STATS: "1"
       KMP_BLOCKTIME: "1"
     versions:
-      "0.33.0": { image: "docker.io/vllm/vllm-openai-cpu:v0.33.0" }
+      "0.33.0": { image: "docker.io/vllm/vllm-openai-cpu:v0.33.0" }   # opt-in; not validated with the category args
       "0.24.0": { image: "docker.io/vllm/vllm-openai-cpu:v0.24.0" }
       "0.28.0": { image: "docker.io/vllm/vllm-openai-cpu:v0.28.0" }
       "0.19.1":
         image: "docker.io/vllm/vllm-openai-cpu:v0.19.1"
-        env: { VLLM_USE_V1: "1", VLLM_CPU_KVCACHE_SPACE: "12" }
+        env: { VLLM_USE_V1: "1" }
         args: [ --max-num-seqs, "256" ]
     categories:
       llm:
@@ -352,6 +428,60 @@ runtimes:
         args: [ --dtype, bfloat16, --gpu-memory-utilization, "0.7" ]
         env: { VLLM_CPU_KVCACHE_SPACE: "${KV_CACHE_GB}" }
         defaults: { cpu: 6, memory: "16Gi", kv_cache_gb: 16 }
+
+  # vLLM on NVIDIA GPUs; plumbing in runtimes/vllm-cuda.
+  vllm-cuda:
+    default_version: "0.28.0"
+    env:   # caches under /tmp: the hardened pod cannot write /root
+      USER: "vllm"
+      HOME: "/tmp"
+      XDG_CACHE_HOME: "/tmp/.cache"
+      TRITON_CACHE_DIR: "/tmp/.triton"
+      TORCHINDUCTOR_CACHE_DIR: "/tmp/torchinductor_cache"
+      FLASHINFER_WORKSPACE_BASE: "/tmp"
+      HF_HUB_DISABLE_XET: "1"
+      HF_HUB_ENABLE_HF_TRANSFER: "0"
+      VLLM_NO_USAGE_STATS: "1"
+    versions:
+      "0.28.0":
+        image: "docker.io/vllm/vllm-openai:v0.28.0"
+    categories:   # gpus: per-pod GPU count, default --tensor-parallel-size
+      llm:
+        args: [ --dtype, bfloat16, --max-num-seqs, "256", --enable-prefix-caching ]
+        defaults: { cpu: 8, memory: "64Gi", gpus: 1 }
+      vlm:
+        args: [ --dtype, bfloat16, --max-num-seqs, "64" ]
+        defaults: { cpu: 8, memory: "64Gi", gpus: 1 }
+      embed:
+        args: [ --dtype, bfloat16 ]
+        defaults: { cpu: 4, memory: "16Gi", gpus: 1 }
+      rerank:
+        args: [ --dtype, bfloat16 ]
+        defaults: { cpu: 4, memory: "16Gi", gpus: 1 }
+
+  # vLLM on Intel Arc Pro B-Series (gpu.intel.com/xe, Intel GPU device plugin); plumbing in runtimes/vllm-xpu.
+  vllm-xpu:
+    env:
+      VLLM_NO_USAGE_STATS: "1"
+      DO_NOT_TRACK: "1"
+      VLLM_WORKER_MULTIPROC_METHOD: "spawn"     # XPU contexts cannot survive fork()
+      VLLM_ALLOW_LONG_MAX_MODEL_LEN: "1"
+      TORCH_LLM_ALLREDUCE: "1"                  # IPEX's fused all-reduce for tensor parallelism
+      SYCL_CACHE_PERSISTENT: "1"                # keep compiled kernels across restarts
+      ZES_ENABLE_SYSMAN: "1"                    # lets vLLM read free device memory
+      ZE_ENABLE_PCI_ID_DEVICE_ORDER: "1"        # stable GPU order across ranks
+      CCL_PROCESS_LAUNCHER: "none"              # ranks are vLLM workers, not an MPI job
+      CCL_WORKER_OFFLOAD: "0"
+      CCL_ZE_IPC_EXCHANGE: "pidfd"
+      CCL_ALLREDUCE: "ring"
+      TRITON_CACHE_DIR: "/tmp/.triton"
+      XDG_CACHE_HOME: "/tmp/.cache"
+      HOME: "/tmp"                              # non-root UID 1000 has no writable home in the image
+    categories:
+      llm:
+        args: [ --dtype, float16, --block-size, "64", --gpu-memory-utilization, "0.9", --max-model-len, "32768",
+                --enforce-eager, --no-enable-prefix-caching ]
+        defaults: { cpu: 8, memory: "64Gi", gpus: 1 }
 
   # OpenVINO Model Server; plumbing in runtimes/openvino.
   openvino:

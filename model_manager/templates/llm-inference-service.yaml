@@ -5,7 +5,7 @@ metadata:
   namespace: {{NAMESPACE}}
   labels:
     app.kubernetes.io/name: {{MODEL_NAME}}
-    app.kubernetes.io/managed-by: model-manager{{EXTRA_LABELS}}
+    app.kubernetes.io/managed-by: model-manager{{EXTRA_LABELS}}{{SIZING_ANNOTATIONS}}
 spec:
 {{NRI_ANNOTATIONS}}  model:
     uri: {{MODEL_URI}}
@@ -26,16 +26,15 @@ spec:
 {{CHAT_TEMPLATE_MOUNT}}        resources:
           requests:
             cpu: "{{CPU}}"
-            memory: {{MEMORY}}
-          limits:
-            cpu: "{{CPU}}"
-            memory: {{MEMORY}}
+            memory: {{MEMORY}}{{GPU_RESOURCE}}
+          limits:{{CPU_LIMIT}}
+            memory: {{MEMORY}}{{GPU_RESOURCE}}
         startupProbe:
           httpGet:
             path: {{READY_PATH}}
             port: 8000
-          failureThreshold: 120
-          periodSeconds: 10
+          failureThreshold: {{STARTUP_FAILURES}}
+          periodSeconds: {{STARTUP_PERIOD}}{{STARTUP_TIMEOUT}}
         livenessProbe:
           httpGet:
             path: {{LIVE_PATH}}
@@ -62,5 +61,5 @@ spec:
             type: RuntimeDefault
     securityContext:
       seccompProfile:
-        type: RuntimeDefault
-{{CHAT_TEMPLATE_VOLUME}}{{AFFINITY}}
+        type: RuntimeDefault{{SUPPLEMENTAL_GROUPS}}
+{{CHAT_TEMPLATE_VOLUME}}{{AFFINITY}}{{TOLERATIONS}}

@@ -5,6 +5,7 @@ import dataclasses
 import json
 import os
 import re
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,8 @@ from .config import Catalog, Model, gateway_ref, mm_path, pick, text
 from .ui import abort
 
 CHAT_TEMPLATE_DIR = "/etc/chat-template"
+KV_CACHE_ENV = "VLLM_CPU_KVCACHE_SPACE"
+KV_CACHE_GB = "${KV_CACHE_GB}"
 
 
 def render(path: Path, **values: str) -> str:
@@ -85,19 +88,45 @@ def args_json(m: Model, args: list[str]) -> str:
     return json.dumps(out, separators=(",", ":"), ensure_ascii=False)
 
 
-def _env(m: Model, catalog: Catalog, cli_args: list[str], cli_env: list[str], base: dict | None = None) -> str:
-    """Env, lowest to highest: trust-remote-code offline < runtime < category < version < model < --env < base."""
+def merged_env(m: Model, cli_args: list[str], cli_env: list[str]) -> dict:
+    """Env, lowest to highest: trust-remote-code offline < runtime < category < version < model < --env."""
     merged = {"HF_HUB_OFFLINE": "1"} if trust_remote_code(m, cli_args) else {}
     for layer in (pick(m.rt, "env", {}), pick(m.cat, "env", {}), pick(m.ver, "env", {}), m.env,
                   dict((p.split("=", 1)[0], p.split("=", 1)[-1]) for p in cli_env)):
         merged.update(layer)
+    return merged
+
+
+def effective_args(m: Model, cli_args: list[str], cli_env: list[str]) -> list[str]:
+    """The engine args vLLM receives, later ones winning: category, version and model args, --arg/--tp, and on
+    OpenShift the VLLM_ADDITIONAL_ARGS env, which its template appends after them (platform.adapt_llmisvc)."""
+    args = [*engine_args(m), *cli_args]
+    if platform.is_openshift():
+        args += shlex.split(text(merged_env(m, cli_args, cli_env).get("VLLM_ADDITIONAL_ARGS", "")))
+    return args
+
+
+def explicit_kv_cache(m: Model, cli_args: list[str], cli_env: list[str]) -> str:
+    """VLLM_CPU_KVCACHE_SPACE as set by a version, the model or --env; '' when it is the category's ${KV_CACHE_GB}."""
+    value = text(merged_env(m, cli_args, cli_env).get(KV_CACHE_ENV, ""))
+    return "" if KV_CACHE_GB in value else value
+
+
+def category_kv_cache(m: Model) -> str:
+    """The category's kv_cache_gb, which fills its ${KV_CACHE_GB}."""
+    return text(pick(pick(m.cat, "defaults", {}), "kv_cache_gb", 8))
+
+
+def _env(m: Model, catalog: Catalog, cli_args: list[str], cli_env: list[str], base: dict | None = None) -> str:
+    """merged_env, then base: the launcher's args (args_env), which env may not set."""
+    merged = merged_env(m, cli_args, cli_env)
     for k in sorted(set(merged) & set(base or {})):  # the launcher's args: set them with args:/--arg instead
         abort(f"Model '{m.name}': {k} is built from the engine args, so it cannot be set through env; "
               "set the engine args with args: or --arg instead.")
     merged.update(base or {})
-    kv_gb = text(pick(pick(m.cat, "defaults", {}), "kv_cache_gb", 8))
+    kv_gb = m.kv_cache_gb or category_kv_cache(m)
     items = [f"        - name: {k}\n          value: "
-             f"{quote(text(v).replace('${KV_CACHE_GB}', kv_gb).replace('${MODEL_ID}', m.model_id))}"
+             f"{quote(text(v).replace(KV_CACHE_GB, kv_gb).replace('${MODEL_ID}', m.model_id))}"
              for k, v in sorted(merged.items())]
     if m.runtime == "openvino":  # OVMS fetches inside the serving pod, so it needs proxy + token there
         items += [f"        - name: {k}\n          value: {quote(v)}" for k, v in proxy_env(catalog)]
@@ -130,6 +159,44 @@ def _annotations(annotations: dict, kind: str) -> str:
     pad = "  " if kind == "LLMInferenceService" else "    "
     return f"{pad}annotations:\n" + "".join(
         f"{pad}  {k}: {quote(v) if v.isdigit() or v in ('true', 'false') else v}\n" for k, v in annotations.items())
+
+
+def _volumes(m: Model) -> tuple[str, str]:
+    """volumeMounts and volumes: the inline chat template's ConfigMap and, on GPU runtimes, a memory-backed
+    /dev/shm (NCCL needs more shared memory for tensor parallelism than the container's 64Mi)."""
+    mounts, volumes = [], []
+    if inline_chat_template(m):
+        mounts.append(f"          - name: chat-template\n            mountPath: {CHAT_TEMPLATE_DIR}\n"
+                      "            readOnly: true\n")
+        volumes.append(f"      - name: chat-template\n        configMap:\n          name: {m.name}-chat-template\n")
+    shm = text(pick(m.rt, "shm_size")) if m.gpu else ""
+    if shm:
+        mounts.append("          - name: shm\n            mountPath: /dev/shm\n")
+        volumes.append(f"      - name: shm\n        emptyDir:\n          medium: Memory\n          sizeLimit: {shm}\n")
+    if not mounts:
+        return "", ""
+    return "        volumeMounts:\n" + "".join(mounts), "    volumes:\n" + "".join(volumes)
+
+
+def gpu_toleration(m: Model, indent: int) -> str:
+    """The toleration for the taint GPU nodes carry, at a pod spec's indent; empty on CPU."""
+    key = text(pick(m.rt, "accelerator_toleration_key")) if m.gpu else ""
+    pad = " " * indent
+    return f"{pad}tolerations:\n{pad}  - key: {key}\n{pad}    operator: Exists\n{pad}    effect: NoSchedule" if key else ""
+
+
+def _gpu(m: Model, affinity: str) -> tuple[str, str]:
+    """The accelerator line appended to requests and limits, and the toleration; both empty on CPU."""
+    if not m.gpu:
+        return "", ""
+    toleration = gpu_toleration(m, 4)
+    return f'\n            {m.accel_resource}: "{m.gpus}"', ("\n" if affinity and toleration else "") + toleration
+
+
+def device_groups(m: Model) -> str:
+    """The pod's supplementalGroups (the host's render/video GIDs, runtime `device_groups`); empty on CPU."""
+    gids = [text(g) for g in pick(m.rt, "device_groups", [])] if m.gpu else []
+    return "\n      supplementalGroups: [" + ", ".join(gids) + "]" if gids else ""
 
 
 # Standalone default; the install always sets MM_PROMETHEUS_URL from observability_namespace.
@@ -174,17 +241,19 @@ def _engine(m: Model) -> dict:
     command = [_fill(a, m) for a in pick(c, "command", [])]
     return {"COMMAND": f"        command: {json.dumps(command)}\n" if command else "",
             "READY_PATH": _fill(pick(c, "ready_path", "/health"), m),
-            "LIVE_PATH": _fill(pick(c, "live_path", "/health"), m), "RUN_AS": m.run_as_user}
+            "LIVE_PATH": _fill(pick(c, "live_path", "/health"), m), "RUN_AS": m.run_as_user,
+            "STARTUP_FAILURES": text(pick(c, "startup_failures", 120)), "STARTUP_PERIOD": text(pick(c, "startup_period", 10)),
+            "STARTUP_TIMEOUT": f"\n          timeoutSeconds: {text(pick(c, 'startup_timeout'))}" if pick(c, "startup_timeout") else ""}
 
 
 def manifest(m: Model, catalog: Catalog, o, annotations: dict, cpu: str, cli_args: list[str]) -> str:
     """The LLMInferenceService / InferenceService for m. cli_args already carries any --tp injection."""
-    args = engine_args(m)
+    args = engine_args(m) + (["--max-model-len", m.max_model_len] if m.max_model_len else [])
     if m.kind == "LLMInferenceService" and m.container:
         if platform.is_openshift():  # OpenShift AI's template starts vLLM itself (see platform.adapt_llmisvc)
             abort(f"Runtime '{m.runtime}' is not supported on OpenShift: its LLMInferenceService template "
                   "starts vLLM.")
-        if m.chat_template and not pick(m.container, "args_env"):  # args_env launchers run vLLM
+        if m.chat_template and not m.serves_vllm:
             abort(f"Model '{m.name}': chat_template applies to vLLM only, not runtime '{m.runtime}'.")
         args = [_fill(a, m) for a in pick(m.container, "args", [])] + args
     elif m.kind == "LLMInferenceService":
@@ -200,21 +269,25 @@ def manifest(m: Model, catalog: Catalog, o, annotations: dict, cpu: str, cli_arg
     common = {
         "MODEL_NAME": m.name, "NAMESPACE": m.namespace, "MODEL_URI": m.uri, "CPU": cpu, "MEMORY": m.memory,
         "REPLICAS": m.replicas, "ARGS": _list([f"        - {quote(a)}" for a in args]),
-        "ENV": _env(m, catalog, cli_args, o.env, base_env), "NRI_ANNOTATIONS": _annotations(annotations, m.kind),
-        "AFFINITY": _affinity(m.node, catalog.require_amx),
+        "ENV": _env(m, catalog, cli_args, o.env, base_env),
+        "NRI_ANNOTATIONS": _annotations(annotations, m.kind) if annotations else "",
+        "AFFINITY": _affinity(m.node, catalog.require_amx and not m.gpu),
         "EXTRA_LABELS": "".join(f"\n    {p.split('=', 1)[0]}: {quote(p.split('=', 1)[1])}" for p in o.label),
     }
     if m.kind == "LLMInferenceService":
-        inline = inline_chat_template(m)
+        mounts, volumes = _volumes(m)
+        gpu_limit, tolerations = _gpu(m, common["AFFINITY"])
         gateway, gateway_ns = gateway_ref()
+        # GPU pods get no CPU limit, which makes them Burstable: kubelet's static CPU manager then never
+        # gives them exclusive cores (full-pcpus-only would refuse an odd count with SMTAlignmentError).
+        cpu_limit = "" if m.gpu else f'\n            cpu: "{cpu}"'
         return platform.adapt_llmisvc(render(
             template("llm-inference-service.yaml"), **common, **_engine(m), IMAGE=m.image,
+            SIZING_ANNOTATIONS="".join(["\n  annotations:"] * bool(m.sizing)
+                                       + [f"\n    {k}: {quote(v)}" for k, v in m.sizing.items()]),
             SCALING=_llmisvc_replicas(m),
-            GATEWAY_NAME=gateway, GATEWAY_NAMESPACE=gateway_ns,
-            CHAT_TEMPLATE_MOUNT=(f"        volumeMounts:\n          - name: chat-template\n"
-                                 f"            mountPath: {CHAT_TEMPLATE_DIR}\n            readOnly: true\n") if inline else "",
-            CHAT_TEMPLATE_VOLUME=(f"    volumes:\n      - name: chat-template\n        configMap:\n"
-                                  f"          name: {m.name}-chat-template\n") if inline else ""))
+            GATEWAY_NAME=gateway, GATEWAY_NAMESPACE=gateway_ns, CHAT_TEMPLATE_MOUNT=mounts,
+            CHAT_TEMPLATE_VOLUME=volumes, SUPPLEMENTAL_GROUPS=device_groups(m), GPU_RESOURCE=gpu_limit, TOLERATIONS=tolerations, CPU_LIMIT=cpu_limit))
     if m.kind == "InferenceService":
         return render(template("inference-service.yaml"), **common, MODEL_ID=m.model_id, PVC_NAME=catalog.pvc,
                       MODEL_FORMAT=text(pick(m.rt, "format")) or "openvino",

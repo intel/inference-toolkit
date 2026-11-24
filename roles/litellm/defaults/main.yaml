@@ -23,6 +23,8 @@ litellm_image_repository: "ghcr.io/berriai/litellm-non_root"
 litellm_version: "v1.105.1"
 litellm_run_as_user: 65534
 litellm_namespace: "litellm"
+litellm_num_workers: 2
+litellm_rust_enabled: true
 litellm_valkey_tag: "9.1.2-alpine"              # valkey/valkey (official upstream image, Alpine for smaller footprint)
 
 # An existing release is left as it is, except that one whose config lacks the
@@ -35,12 +37,12 @@ litellm_reconcile: false
 # Foreign var (canonical owner: enterprise-ai-solutions gateway component flag;
 # envoy_gateway_enabled is its alias).
 litellm_gateway_publish: "{{ gateway_enabled | default(envoy_gateway_enabled | default(true)) | bool }}"
-litellm_hostname: "litellm.{{ base_domain_name | default('inference-example.com') }}"
+litellm_hostname: "litellm.{{ base_domain_name | default('inteltoolkits.ai') }}"
 # Path mode (routing_mode: path): <base>/litellm, each public path rewritten.
 litellm_path: "/litellm"
 _litellm_path_mode: "{{ (routing_mode | default('subdomain')) == 'path' }}"
 litellm_url: >-
-  {{ 'https://' ~ (base_domain_name | default('inference-example.com')) ~ litellm_path
+  {{ 'https://' ~ (base_domain_name | default('inteltoolkits.ai')) ~ litellm_path
      if _litellm_path_mode | bool else 'https://' ~ litellm_hostname }}
 
 # Admin UI on its own host (path mode: under litellm_path, on the base host's
@@ -51,7 +53,7 @@ litellm_url: >-
 # LiteLLM's free tier stops all SSO logins once more than 5 users exist, so the
 # gateway admits only litellm_ui_groups (default: the admin group).
 litellm_ui_sso: "{{ keycloak_enabled | default(true) | bool }}"
-litellm_ui_hostname: "litellm-ui.{{ base_domain_name | default('inference-example.com') }}"
+litellm_ui_hostname: "litellm-ui.{{ base_domain_name | default('inteltoolkits.ai') }}"
 litellm_ui_url: "{{ litellm_url if _litellm_path_mode | bool else 'https://' ~ litellm_ui_hostname }}"
 litellm_ui_groups: []
 litellm_oidc_client_id: "litellm"
@@ -145,11 +147,11 @@ litellm_redis_resources:
 litellm_single_node_replicas: 1
 litellm_single_node_resources:
   requests:
-    cpu: "1"
-    memory: "2Gi"
+    cpu: "2"
+    memory: "8Gi"
   limits:
-    cpu: "4"
-    memory: "4Gi"
+    cpu: "2"
+    memory: "8Gi"
 
 # Schema migration Job — the chart's 512Mi limit is far too small and the Job was
 # cgroup-OOM-killed on every attempt until BackoffLimitExceeded (exit 137 reported
@@ -173,10 +175,10 @@ litellm_multi_node_replicas: 2
 litellm_multi_node_resources:
   requests:
     cpu: "2"
-    memory: "2Gi"
+    memory: "8Gi"
   limits:
-    cpu: "4"
-    memory: "4Gi"
+    cpu: "2"
+    memory: "8Gi"
 
 # Trace to Langfuse unless it is turned off (langfuse_enabled: false). The
 # langfuse role supplies host and keys and re-wires this when toggled later.
@@ -248,4 +250,4 @@ hybrid_router_tier_boundaries:
   complex_reasoning: 0.60
 # LiteLLM base routing strategy used when the hybrid router is enabled (the bandit
 # runs pre-routing; this is the underlying deployment strategy).
-hybrid_router_base_strategy: "usage-based-routing-v2"
+hybrid_router_base_strategy: "simple-shuffle"

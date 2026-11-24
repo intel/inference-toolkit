@@ -46,7 +46,7 @@ environment's `routing_mode`:
 ```bash
 ENV=local
 export KUBECONFIG=$(pwd)/env/$ENV/kubeconfig.yaml
-CA=env/$ENV/logs/ai-solutions-ca.crt
+CA=env/$ENV/logs/toolkit-manager-ca.crt
 
 GATEWAY_IP=$(kubectl get svc -n envoy-gateway-system \
   -l gateway.envoyproxy.io/owning-gateway-name=eg-gateway \
@@ -64,7 +64,7 @@ fi
 The examples below use `curl --resolve`, which sends the request to the gateway IP under
 the right `Host` and SNI without editing `/etc/hosts`, and `--cacert "$CA"`, which
 trusts the installer's self-signed certificate authority
-(`env/<env>/logs/ai-solutions-ca.crt`) instead of skipping the check with `-k`.
+(`env/<env>/logs/toolkit-manager-ca.crt`) instead of skipping the check with `-k`.
 
 ## Keycloak JWT mode (default)
 
@@ -276,7 +276,7 @@ print(client.chat.completions.create(
 ).choices[0].message.content)
 ```
 
-Run it with `SSL_CERT_FILE=env/<env>/logs/ai-solutions-ca.crt` so Python trusts the
+Run it with `SSL_CERT_FILE=env/<env>/logs/toolkit-manager-ca.crt` so Python trusts the
 installer's certificate authority. Your machine must also resolve the host name to the
 gateway IP (DNS or `/etc/hosts`); Python has no `--resolve`. For frameworks (LangChain,
 LlamaIndex, and others) see the Toolkit Manager

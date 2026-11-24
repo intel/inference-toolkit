@@ -298,7 +298,7 @@ with `routing_mode: path`; `DOMAIN` and `GATEWAY_IP` as in
 [Accessing Models](../getting-started/accessing-models.md)):
 
 ```bash
-curl -s --noproxy '*' --cacert env/<env>/logs/ai-solutions-ca.crt \
+curl -s --noproxy '*' --cacert env/<env>/logs/toolkit-manager-ca.crt \
   --resolve "litellm.${DOMAIN}:443:${GATEWAY_IP}" \
   -H "Authorization: Bearer <LITELLM_KEY>" \
   -H "Content-Type: application/json" \

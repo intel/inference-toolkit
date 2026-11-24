@@ -40,7 +40,7 @@ Detail → [CPU Pinning & NUMA](../reference/cpu-pinning.md).
 | `401` on every request in `jwt` mode | Missing, malformed, or expired JWT. Tokens last 15 minutes by default — re-run `source .../get-keycloak-token.sh`, or pass `--lifespan 3600`. |
 | `401` in `litellm_vkey` mode with a key that used to work | The virtual key expired, was revoked, or exceeded its budget. List keys through a port-forward (the key API is not on the public address): see [Virtual keys](../getting-started/accessing-models.md#virtual-keys). |
 | `401` for one model only, in `litellm_vkey` mode | The key's model allow-list doesn't include it. Mint a key with that model in `models`. |
-| TLS certificate warnings from `curl` or a browser | Self-signed CA. Use `--cacert env/<env>/logs/ai-solutions-ca.crt`, or import that CA into your trust store. |
+| TLS certificate warnings from `curl` or a browser | Self-signed CA. Use `--cacert env/<env>/logs/toolkit-manager-ca.crt`, or import that CA into your trust store. |
 | The LiteLLM UI redirects to `http://` and fails | The trailing slash is required: `https://litellm-ui.<domain>/ui/` (path mode: `https://<domain>/litellm/ui/`), not `/ui`. |
 | Every LiteLLM request returns `500` "Blocked by the content-safety guardrail: the guard model backend is unreachable" | The guard model is not Ready yet, or LiteLLM's outbound URL check refused its host. See [Guardrails → Everything Is Blocked](../configuration/guardrails.md#everything-is-blocked). |
 | Model deployed, but requests return "model not found" | The `model` field must match the deploy **name**, not the Hugging Face `model_id`. List what's registered with `GET /v1/models`. |

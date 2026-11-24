@@ -99,7 +99,7 @@ only when the `*.apps` hostnames don't resolve from your machine.
 source ./ext/enterprise.ai-inference/model_manager/scripts/get-keycloak-token.sh
 
 H=inference.<domain>
-curl -s --noproxy '*' --cacert env/ocp/logs/ai-solutions-ca.crt \
+curl -s --noproxy '*' --cacert env/ocp/logs/toolkit-manager-ca.crt \
   ${GATEWAY_IP:+--resolve "$H:443:$GATEWAY_IP"} \
   https://$H/llm-inference/qwen3-0-6b/v1/chat/completions \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
@@ -110,7 +110,7 @@ Without the script:
 
 ```bash
 SECRET=$(oc get secret keycloak-client-secret -n keycloak -o jsonpath='{.data.client-secret}' | base64 -d)
-TOKEN=$(curl -s --noproxy '*' --cacert env/ocp/logs/ai-solutions-ca.crt \
+TOKEN=$(curl -s --noproxy '*' --cacert env/ocp/logs/toolkit-manager-ca.crt \
   --resolve "keycloak.<domain>:443:<ingress VIP>" \
   https://keycloak.<domain>/realms/inference/protocol/openid-connect/token \
   -d grant_type=client_credentials -d client_id=inference-client -d client_secret=$SECRET | jq -r .access_token)

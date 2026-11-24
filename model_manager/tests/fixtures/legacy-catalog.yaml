@@ -1,0 +1,152 @@
+# Catalog for the parity cases: the vllm-runtime models their legacy goldens were recorded
+# against, so changes to the shipped catalog do not change their output.
+defaults: {namespace: llm-inference, runtime: vllm, replicas: 1, require_amx: true}
+storage: {pvc_name: model-store}
+network: {http_proxy: '', https_proxy: '', no_proxy: '', connectivity_check: 'https://huggingface.co'}
+models:
+- name: qwen3-0-6b
+  model_id: Qwen/Qwen3-0.6B
+  category: llm
+  servers:
+    vllm:
+      versions: [0.24.0, 0.19.1]
+      default: 0.24.0
+  default_server: vllm
+  cpu: 8
+  memory: 16Gi
+- {name: llama3-8b-awq, model_id: casperhansen/llama-3-8b-instruct-awq, category: llm, runtime: vllm, server_version: 0.24.0, cpu: 16, memory: 32Gi}
+- {name: qwen3-5-2b-ovms, model_id: OpenVINO/Qwen3.5-2B-int4-ov, runtime: openvino, category: llm, cpu: 8, memory: 16Gi}
+- {name: bge-base-en, model_id: BAAI/bge-base-en-v1.5, category: embed, runtime: vllm, server_version: 0.24.0}
+- {name: bge-reranker, model_id: BAAI/bge-reranker-base, category: rerank, runtime: vllm, server_version: 0.24.0}
+- name: qwen2-5-coder-14b
+  model_id: Qwen/Qwen2.5-Coder-14B-Instruct
+  category: llm
+  runtime: vllm
+  server_version: 0.28.0
+  cpu: auto
+  memory: 96Gi
+  chat_template_file: tool_chat_template_qwen3coder.jinja
+  args: [--block-size, '128', --dtype, bfloat16, --distributed_executor_backend, mp, --enable_chunked_prefill, --enforce-eager, --max-num-batched-tokens,
+    '2048', --max-num-seqs, '256', --enable-prefix-caching, --enable-auto-tool-choice, --tool-call-parser, qwen3_xml, --tensor-parallel-size, '1']
+  env: {VLLM_RPC_TIMEOUT: '100000', VLLM_ALLOW_LONG_MAX_MODEL_LEN: '1', VLLM_ENGINE_ITERATION_TIMEOUT_S: '120', TRITON_CACHE_DIR: /tmp/.triton, USER: vllm,
+    VLLM_CPU_KVCACHE_SPACE: '40', VLLM_CPU_NUM_OF_RESERVED_CPU: '0', HF_HUB_DISABLE_XET: '1', VLLM_CPU_SGL_KERNEL: '1', TORCHDYNAMO_DISABLE: '1'}
+# GPU models from the shipped catalog, for the vllm-cuda and vllm-xpu goldens.
+- {name: qwen3-0-6b-cuda, model_id: Qwen/Qwen3-0.6B, category: llm, runtime: vllm-cuda, gpus: 1, autodeploy: false}
+- name: llama-3-1-70b-instruct-cuda
+  model_id: meta-llama/Llama-3.1-70B-Instruct
+  category: llm
+  runtime: vllm-cuda
+  gpus: 8
+  memory: 128Gi
+  args: [--max-model-len, '131072', --enable-auto-tool-choice, --tool-call-parser, llama3_json]
+  autodeploy: false
+- name: nemotron-3-5-lightning-30b-a3b-cuda
+  model_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16
+  category: llm
+  runtime: vllm-cuda
+  gpus: 1
+  args: [--max-model-len, '262144', --mamba-backend, flashinfer, --mamba-ssm-cache-dtype, float16, --enable-mamba-cache-stochastic-rounding,
+    --mamba-cache-philox-rounds, '5', --enable-auto-tool-choice, --tool-call-parser, qwen3_coder, --reasoning-parser, nemotron_v3]
+  autodeploy: false
+- name: nemotron-3-super-120b-a12b-cuda
+  model_id: nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8
+  category: llm
+  runtime: vllm-cuda
+  gpus: 4
+  memory: 128Gi
+  args: [--max-model-len, '262144', --kv-cache-dtype, fp8, --enable-expert-parallel, --mamba-ssm-cache-dtype, float32, --enable-auto-tool-choice,
+    --tool-call-parser, qwen3_coder, --reasoning-parser, nemotron_v3]
+  autodeploy: false
+- name: nemotron-3-ultra-550b-a55b-cuda
+  model_id: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4
+  category: llm
+  runtime: vllm-cuda
+  gpus: 8
+  memory: 384Gi
+  args: [--max-model-len, '262144', --kv-cache-dtype, fp8, --enable-expert-parallel, --mamba-backend, flashinfer, --mamba-ssm-cache-dtype,
+    float16, --enable-mamba-cache-stochastic-rounding, --mamba-cache-philox-rounds, '5', --enable-auto-tool-choice, --tool-call-parser,
+    qwen3_coder, --reasoning-parser, nemotron_v3]
+  autodeploy: false
+- name: vllm-xpu-llama-3-1-8b
+  model_id: meta-llama/Llama-3.1-8B-Instruct
+  category: llm
+  runtime: vllm-xpu
+  gpus: 1
+  memory: 32Gi
+  args: [--dtype, bfloat16, --disable-sliding-window, --max-model-len, '9216']
+  autodeploy: false
+- name: vllm-xpu-gpt-oss-20b
+  model_id: openai/gpt-oss-20b
+  category: llm
+  runtime: vllm-xpu
+  gpus: 1
+  memory: 32Gi
+  args: [--dtype, auto, --disable-sliding-window, --max-model-len, '9216', --max-num-batched-tokens, '9216']
+  autodeploy: false
+runtimes:
+  vllm:
+    default_version: 0.24.0
+    env: {USER: vllm, VLLM_CPU_NUM_OF_RESERVED_CPU: '1', VLLM_CPU_SGL_KERNEL: '1', VLLM_NO_USAGE_STATS: '1', KMP_BLOCKTIME: '1'}
+    versions:
+      0.24.0: {image: 'docker.io/vllm/vllm-openai-cpu:v0.24.0'}
+      0.28.0: {image: 'docker.io/vllm/vllm-openai-cpu:v0.28.0'}
+      0.33.0: {image: 'docker.io/vllm/vllm-openai-cpu:v0.33.0'}
+      0.19.1:
+        image: docker.io/vllm/vllm-openai-cpu:v0.19.1
+        env: {VLLM_USE_V1: '1'}
+        args: [--max-num-seqs, '256']
+    categories:
+      llm:
+        args: [--dtype, bfloat16, --max-num-seqs, '128', --max-num-batched-tokens, '2048', --enable-prefix-caching, --enable-chunked-prefill]
+        env: {VLLM_CPU_KVCACHE_SPACE: '${KV_CACHE_GB}'}
+        defaults: {cpu: 8, memory: 16Gi, kv_cache_gb: 8}
+      embed:
+        args: [--dtype, bfloat16, --gpu-memory-utilization, '0.7']
+        env: {VLLM_CPU_KVCACHE_SPACE: '${KV_CACHE_GB}'}
+        defaults: {cpu: 6, memory: 16Gi, kv_cache_gb: 16}
+      rerank:
+        args: [--dtype, bfloat16, --gpu-memory-utilization, '0.7']
+        env: {VLLM_CPU_KVCACHE_SPACE: '${KV_CACHE_GB}'}
+        defaults: {cpu: 6, memory: 16Gi, kv_cache_gb: 16}
+      vlm:
+        args: [--dtype, bfloat16, --max-num-seqs, '64', --max-num-batched-tokens, '1024']
+        env: {VLLM_CPU_KVCACHE_SPACE: '${KV_CACHE_GB}'}
+        defaults: {cpu: 16, memory: 48Gi, kv_cache_gb: 8}
+  vllm-cuda:
+    default_version: 0.28.0
+    env: {USER: vllm, HOME: /tmp, XDG_CACHE_HOME: /tmp/.cache, TRITON_CACHE_DIR: /tmp/.triton, TORCHINDUCTOR_CACHE_DIR: /tmp/torchinductor_cache,
+      FLASHINFER_WORKSPACE_BASE: /tmp, HF_HUB_DISABLE_XET: '1', HF_HUB_ENABLE_HF_TRANSFER: '0', VLLM_NO_USAGE_STATS: '1'}
+    versions:
+      0.28.0: {image: 'docker.io/vllm/vllm-openai:v0.28.0'}
+    categories:
+      llm:
+        args: [--dtype, bfloat16, --max-num-seqs, '256', --enable-prefix-caching]
+        defaults: {cpu: 8, memory: 64Gi, gpus: 1}
+      vlm:
+        args: [--dtype, bfloat16, --max-num-seqs, '64']
+        defaults: {cpu: 8, memory: 64Gi, gpus: 1}
+      embed:
+        args: [--dtype, bfloat16]
+        defaults: {cpu: 4, memory: 16Gi, gpus: 1}
+      rerank:
+        args: [--dtype, bfloat16]
+        defaults: {cpu: 4, memory: 16Gi, gpus: 1}
+  vllm-xpu:
+    env: {VLLM_NO_USAGE_STATS: '1', DO_NOT_TRACK: '1', VLLM_WORKER_MULTIPROC_METHOD: spawn, VLLM_ALLOW_LONG_MAX_MODEL_LEN: '1',
+      TORCH_LLM_ALLREDUCE: '1', SYCL_CACHE_PERSISTENT: '1', ZES_ENABLE_SYSMAN: '1', ZE_ENABLE_PCI_ID_DEVICE_ORDER: '1', CCL_PROCESS_LAUNCHER: none,
+      CCL_WORKER_OFFLOAD: '0', CCL_ZE_IPC_EXCHANGE: pidfd, CCL_ALLREDUCE: ring, TRITON_CACHE_DIR: /tmp/.triton, XDG_CACHE_HOME: /tmp/.cache,
+      HOME: /tmp}
+    categories:
+      llm:
+        args: [--dtype, float16, --block-size, '64', --gpu-memory-utilization, '0.9', --max-model-len, '32768', --enforce-eager,
+          --no-enable-prefix-caching]
+        defaults: {cpu: 8, memory: 64Gi, gpus: 1}
+  openvino:
+    env: {}
+    categories:
+      llm:
+        defaults: {cpu: 8, memory: 16Gi}
+      embed:
+        defaults: {cpu: 6, memory: 12Gi}
+      rerank:
+        defaults: {cpu: 6, memory: 12Gi}

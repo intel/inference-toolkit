@@ -294,7 +294,15 @@ class Model:
     @property
     def container(self) -> dict:
         """The runtime's own serving container (command, args, probes, user); {} means KServe's vLLM command."""
-        return pick(self.rt, "container", {})
+        c = pick(self.rt, "container", {})
+        # OpenShift AI's template starts vLLM itself: a vLLM launcher image (args_env) runs that way there.
+        return {} if pick(c, "args_env") and platform.is_openshift() else c
+
+    @property
+    def serves_vllm(self) -> bool:
+        """vLLM's API: KServe's vLLM command, a launcher that hands it vLLM args (args_env), or a vLLM image
+        whose container takes --chat-template (chat_template: true, e.g. vllm-xpu)."""
+        return not self.container or bool(pick(self.container, "args_env") or pick(self.container, "chat_template"))
 
     @property
     def vllm_on_cpu(self) -> bool:
@@ -303,8 +311,8 @@ class Model:
 
     @property
     def run_as_user(self) -> str:
-        """The serving container's user, which also owns the downloaded files so it can read them."""
-        return text(pick(self.container, "run_as_user", 1000))
+        """The serving image's user, which also owns the downloaded files so it can read them (on any platform)."""
+        return text(pick(pick(self.rt, "container", {}), "run_as_user", 1000))
 
     @property
     def cat(self) -> dict:
@@ -424,7 +432,10 @@ def _from_catalog(catalog: Catalog, name: str, o: Any) -> Model:
     if not explicit:
         default_server = text(pick(e, "runtime")) or catalog.runtime
         servers = {default_server: {"default": text(pick(e, "server_version"))}}
-    m.runtime = o.server or default_server or min(servers, default="") or catalog.runtime
+    own = default_server or min(servers, default="") or catalog.runtime   # the runtime the model runs on unasked
+    m.runtime = o.server or own
+    if m.runtime != own:
+        m.image = ""  # a model's image belongs to its own runtime, not to the one --server picks
     if explicit and m.runtime not in servers:
         abort(f"Model '{name}' does not declare server '{m.runtime}'. Declared: {', '.join(sorted(servers))}")
     entry = pick(servers, m.runtime, {})

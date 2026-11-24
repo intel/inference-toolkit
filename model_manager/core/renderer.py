@@ -11,7 +11,8 @@ from typing import Any
 
 from . import platform
 from .config import Catalog, Model, gateway_ref, mm_path, pick, text
-from .ui import abort
+from .sizer import arg_value
+from .ui import abort, warn
 
 CHAT_TEMPLATE_DIR = "/etc/chat-template"
 KV_CACHE_ENV = "VLLM_CPU_KVCACHE_SPACE"
@@ -71,6 +72,23 @@ def dedupe_args(args: list[str]) -> list[str]:
     return [t for n, (key, tokens) in enumerate(entries) if last[key] == n for t in tokens]
 
 
+def args_json(m: Model, args: list[str]) -> str:
+    """vLLM flags as the JSON object a launcher reads from env: a bare flag is true, several values a list."""
+    out: dict = {}
+    key = ""
+    for a in args:
+        if a.startswith("--"):
+            flag, eq, value = a[2:].partition("=")
+            out[flag] = value if eq else True   # a repeated flag keeps its last value, as vLLM's parser does
+            key = "" if eq else flag            # --k=v is complete: a bare token after it is positional
+        elif not key:
+            abort(f"Model '{m.name}': runtime '{m.runtime}' takes only --flag arguments, got '{a}'.")
+        else:
+            prev = out[key]
+            out[key] = a if prev is True else (prev if isinstance(prev, list) else [prev]) + [a]
+    return json.dumps(out, separators=(",", ":"), ensure_ascii=False)
+
+
 def merged_env(m: Model, cli_args: list[str], cli_env: list[str]) -> dict:
     """Env, lowest to highest: trust-remote-code offline < runtime < category < version < model < --env."""
     merged = {"HF_HUB_OFFLINE": "1"} if trust_remote_code(m, cli_args) else {}
@@ -100,10 +118,30 @@ def category_kv_cache(m: Model) -> str:
     return text(pick(pick(m.cat, "defaults", {}), "kv_cache_gb", 8))
 
 
-def _env(m: Model, catalog: Catalog, cli_args: list[str], cli_env: list[str]) -> str:
-    merged = merged_env(m, cli_args, cli_env)
+def profile_env(m: Model, args: list[str]) -> dict:
+    """The runtime's profile for the TP in args (runtime profile.ids), as env; {} where it names none."""
+    profile = pick(m.rt, "profile", {})
+    tp = text(arg_value(args, "--tensor-parallel-size")) or "1"
+    ids = {text(k): text(v) for k, v in pick(profile, "ids", {}).items()}
+    if not profile or tp == "1" or not pick(m.container, "args_env"):   # no launcher (OpenShift): no profile
+        return {}
+    if tp not in ids:
+        warn(f"Runtime '{m.runtime}' names no profile for tensor parallel size {tp}; its launcher picks one.")
+        return {}
+    return {text(pick(profile, "env")): ids[tp]}
+
+
+def _env(m: Model, catalog: Catalog, cli_args: list[str], cli_env: list[str], base: dict | None = None,
+         low: dict | None = None) -> str:
+    """low, then merged_env, then base: the launcher's args (args_env), which env may not set."""
+    merged = {**(low or {}), **merged_env(m, cli_args, cli_env)}
+    for k in sorted(set(merged) & set(base or {})):  # the launcher's args: set them with args:/--arg instead
+        abort(f"Model '{m.name}': {k} is built from the engine args, so it cannot be set through env; "
+              "set the engine args with args: or --arg instead.")
+    merged.update(base or {})
     kv_gb = m.kv_cache_gb or category_kv_cache(m)
-    items = [f"        - name: {k}\n          value: {quote(text(v).replace(KV_CACHE_GB, kv_gb))}"
+    items = [f"        - name: {k}\n          value: "
+             f"{quote(text(v).replace(KV_CACHE_GB, kv_gb).replace('${MODEL_ID}', m.model_id))}"
              for k, v in sorted(merged.items())]
     if m.runtime == "openvino":  # OVMS fetches inside the serving pod, so it needs proxy + token there
         items += [f"        - name: {k}\n          value: {quote(v)}" for k, v in proxy_env(catalog)]
@@ -230,21 +268,24 @@ def manifest(m: Model, catalog: Catalog, o, annotations: dict, cpu: str, cli_arg
         if platform.is_openshift():  # OpenShift AI's template starts vLLM itself (see platform.adapt_llmisvc)
             abort(f"Runtime '{m.runtime}' is not supported on OpenShift: its LLMInferenceService template "
                   "starts vLLM.")
-        if m.chat_template and not pick(m.container, "chat_template", False):
+        if m.chat_template and not m.serves_vllm:
             abort(f"Model '{m.name}': chat_template applies to vLLM only, not runtime '{m.runtime}'.")
         args = [_fill(a, m) for a in pick(m.container, "args", [])] + args
-        if m.chat_template:
-            args += ["--chat-template",
-                     f"{CHAT_TEMPLATE_DIR}/chat_template.jinja" if inline_chat_template(m) else m.chat_template]
     elif m.kind == "LLMInferenceService":
         args += ["--served-model-name", m.name]
-        if m.chat_template:
-            path = f"{CHAT_TEMPLATE_DIR}/chat_template.jinja" if inline_chat_template(m) else m.chat_template
-            args += ["--chat-template", path]
+    if m.chat_template and m.kind == "LLMInferenceService":  # vLLM only: other containers aborted above
+        path = f"{CHAT_TEMPLATE_DIR}/chat_template.jinja" if inline_chat_template(m) else m.chat_template
+        args += ["--chat-template", path]
+    args, base_env = args + cli_args, {}
+    low_env = profile_env(m, args)
+    if args_env := text(pick(m.container, "args_env")):  # only an LLMInferenceService runtime has a container
+        args, base_env = [], {args_env: args_json(m, args)}  # no CLI args; args_json keeps each flag's last value
+    else:
+        args = dedupe_args(args)
     common = {
         "MODEL_NAME": m.name, "NAMESPACE": m.namespace, "MODEL_URI": m.uri, "CPU": cpu, "MEMORY": m.memory,
-        "REPLICAS": m.replicas, "ARGS": _list([f"        - {quote(a)}" for a in dedupe_args(args + cli_args)]),
-        "ENV": _env(m, catalog, cli_args, o.env),
+        "REPLICAS": m.replicas, "ARGS": _list([f"        - {quote(a)}" for a in args]),
+        "ENV": _env(m, catalog, cli_args, o.env, base_env, low_env),
         "NRI_ANNOTATIONS": _annotations(annotations, m.kind) if annotations else "",
         "AFFINITY": _affinity(m.node, catalog.require_amx and not m.gpu),
         "EXTRA_LABELS": "".join(f"\n    {p.split('=', 1)[0]}: {quote(p.split('=', 1)[1])}" for p in o.label),

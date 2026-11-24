@@ -57,7 +57,7 @@ With `auth_type: jwt`:
 
 ```bash
 source ./ext/enterprise.ai-inference/model_manager/scripts/get-keycloak-token.sh   # sets TOKEN, GATEWAY_IP, GATEWAY_DOMAIN, GATEWAY_URL
-curl -s --noproxy '*' --cacert env/local/logs/ai-solutions-ca.crt \
+curl -s --noproxy '*' --cacert env/local/logs/toolkit-manager-ca.crt \
   --resolve "$GATEWAY_DOMAIN:443:$GATEWAY_IP" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"model":"qwen3-0-6b","messages":[{"role":"user","content":"Hello!"}],"max_tokens":64}' \
@@ -72,7 +72,7 @@ GATEWAY_IP=$(kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/ow
 DOMAIN=$(yq '.base_domain_name' env/local/global_config.yaml)
 MK=$(kubectl get secret litellm-master-key -n litellm -o jsonpath='{.data.master_key}' | base64 -d)
 
-curl -s --noproxy '*' --cacert env/local/logs/ai-solutions-ca.crt --resolve "litellm.$DOMAIN:443:$GATEWAY_IP" \
+curl -s --noproxy '*' --cacert env/local/logs/toolkit-manager-ca.crt --resolve "litellm.$DOMAIN:443:$GATEWAY_IP" \
   -H "Authorization: Bearer $MK" -H "Content-Type: application/json" \
   -d '{"model":"qwen3-0-6b","messages":[{"role":"user","content":"Hello!"}],"max_tokens":64}' \
   "https://litellm.$DOMAIN/v1/chat/completions"
@@ -83,7 +83,7 @@ each application its own [virtual key](accessing-models.md#virtual-keys).
 
 | Symptom | Fix |
 |---|---|
-| `curl` exits with code 60 (certificate problem) | Pass `--cacert env/local/logs/ai-solutions-ca.crt` |
+| `curl` exits with code 60 (certificate problem) | Pass `--cacert env/local/logs/toolkit-manager-ca.crt` |
 | `401` "Jwt is expired" | `source` the token script again |
 | `401` "Authentication Error" | Wrong, expired or revoked LiteLLM key |
 | `404` "No matching route found", or `400` "Invalid model name" | The `model` field must be a deployed name: `./model-manager list --deployed` |

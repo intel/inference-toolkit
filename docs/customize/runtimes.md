@@ -65,6 +65,12 @@ after the profile. `INFERENCE_MODEL_ID` is set from `model_id`, the weights are 
 `weights + kv_cache_gb + headroom`. The launcher does not change CPU placement: vLLM binds
 its threads inside the cores the NRI balloon gives the pod.
 
+**Profile per tensor parallel size.** Each image ships a profile per TP (1, 2, 4), and the
+launcher picks the TP1 one unless told otherwise. With `--tp 2` or `--tp 4`, model-manager sets
+`INFERENCE_PROFILE_ID` to `vllm-xeon-bf16-tp2` or `-tp4` (`profile.ids` in
+`runtimes/iims/values.yaml`), so vLLM runs that TP's tuned settings. Other sizes keep the
+launcher's choice, with a warning; `env: { INFERENCE_PROFILE_ID: ... }` on a model picks one by hand.
+
 > [!NOTE]
 > Known limits of the 0.1.0 images (vLLM 0.26): `whisper-small` fails its first
 > transcription (`pin_memory=True requires a CUDA or other accelerator backend`), so the

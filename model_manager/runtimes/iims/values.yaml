@@ -14,6 +14,11 @@ env:
   HF_HUB_OFFLINE: "1"           # weights are on /mnt/models; skip the launcher's Hub lookups
   INFERENCE_MODEL_ID: "${MODEL_ID}"   # picks the profile; the base image has none baked in
   VLLM_NO_USAGE_STATS: "1"      # OpenShift runs vLLM without the launcher, which sets VLLM_DO_NOT_TRACK
+# TP > 1: the launcher would still pick its TP1 profile, so name the image's profile for that TP.
+# TP1 is the launcher's own choice (the base image calls it vllm-xeon-bf16). A model's env wins.
+profile:
+  env: INFERENCE_PROFILE_ID
+  ids: { 2: vllm-xeon-bf16-tp2, 4: vllm-xeon-bf16-tp4 }
 # Requests queued because the replica is saturated.
 autoscaling:
   query: 'sum(vllm:num_requests_waiting{namespace="$namespace",model="$model"})'

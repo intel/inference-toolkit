@@ -1,6 +1,7 @@
 """Unit tests for behaviour the parity suite cannot observe, mostly fixes over the legacy CLI."""
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import re
@@ -935,6 +936,29 @@ def test_iim_launcher_takes_vllm_args_as_json(monkeypatch):
         "enable-auto-tool-choice": True, "tool-call-parser": "hermes", "max-num-seqs": "64"}
     assert env["INFERENCE_MODEL_ID"] == "Qwen/Qwen3-4B" and env["VLLM_CPU_KVCACHE_SPACE"] == "16"
     assert main["securityContext"]["runAsUser"] == 1001
+
+
+@pytest.mark.parametrize("cli_args, env, profile", [
+    ([], [], None),                                                  # TP1: the launcher's own choice
+    (["--tensor-parallel-size", "2"], [], "vllm-xeon-bf16-tp2"),     # else it would pick its TP1 profile
+    (["--tensor-parallel-size", "4"], [], "vllm-xeon-bf16-tp4"),
+    (["--tensor-parallel-size", "3"], [], None),                     # none named: the launcher picks
+    (["--tensor-parallel-size", "2"], ["INFERENCE_PROFILE_ID=mine"], "mine"),   # the model's env wins
+])
+def test_iim_profile_follows_the_tensor_parallel_size(monkeypatch, cli_args, env, profile):
+    m, _ = _render(monkeypatch, "iim-qwen3-4b")
+    cat = Catalog(cli.MM_DIR / "models.yaml")
+    o = cli.parse_args(["deploy", "iim-qwen3-4b", *[a for e in env for a in ("--env", e)]])
+    main = _main(yaml.safe_load(renderer.manifest(m, cat, o, {}, m.cpu, cli_args)))
+    assert {e["name"]: e.get("value") for e in main["env"]}.get("INFERENCE_PROFILE_ID") == profile
+
+
+def test_iim_profile_only_where_the_launcher_runs(monkeypatch):
+    m, _ = _render(monkeypatch, "iim-qwen3-4b")
+    assert renderer.profile_env(m, ["--tensor-parallel-size", "2"]) == {"INFERENCE_PROFILE_ID": "vllm-xeon-bf16-tp2"}
+    no_launcher = dataclasses.replace(m, rt={k: v for k, v in m.rt.items() if k != "container"})
+    assert renderer.profile_env(no_launcher, ["--tensor-parallel-size", "2"]) == {}
+    assert renderer.profile_env(Model(name="v", namespace="ns", runtime="vllm"), ["--tensor-parallel-size", "2"]) == {}
 
 
 def test_iim_on_openshift_runs_kserves_vllm_command(monkeypatch):

@@ -59,7 +59,7 @@ apply. Set `MM_FORCE_REDEPLOY=1` to force a full re-apply regardless.
 | `--hfid <hf/repo>` | Deploy any Hugging Face model directly, without a catalog entry (`--id` still works but is deprecated) |
 | `--name <name>` | Set the name to serve under (use with `--hfid`) |
 | `--as <name>` | Deploy a catalog model under a different name — run several variants at once |
-| `--server <name>` | Which engine serves the model: `vllm` (default), `openvino`, `vllm-cuda` or `vllm-xpu` (alias: `--runtime`) |
+| `--server <name>` | Which engine serves the model: `iims` (default), `vllm`, `openvino`, `vllm-cuda` or `vllm-xpu` (alias: `--runtime`) |
 | `--server-version <v>` | Which version of that engine to use — see [below](#pick-an-engine-and-version) |
 | `--cpu N` | Number of CPU cores to give the model. `--cpu auto` sizes it to a NUMA node — see [CPU auto](../configuration/catalog.md#cpu-auto) |
 | `--memory NGi` | Memory limit, e.g. `32Gi`. `--memory auto` sizes a vLLM chat or vision-language model's memory and KV cache from its config, and is the default with `--hfid` — see [Memory & KV-Cache Sizing](../reference/memory-sizing.md) |
@@ -104,8 +104,8 @@ isn't listed fails with a clear message rather than deploying something untested
 
 ## Deploy on GPU nodes
 
-The catalog ships GPU engines, `vllm-cuda` (NVIDIA) and `vllm-xpu` (Intel Arc Pro B-Series, see
-[vLLM on Intel Arc Pro B-Series](../configuration/runtimes.md#vllm-on-intel-arc-pro-b-series-vllm-xpu)),
+The catalog ships GPU engines, `vllm-cuda` (NVIDIA) and `vllm-xpu` (Intel® Arc™ Pro B-Series GPUs, see
+[vLLM on Intel® Arc™ Pro B-Series GPUs](../configuration/runtimes.md#vllm-on-intel-arc-pro-b-series-gpus-vllm-xpu)),
 alongside the default CPU `vllm`.
 A model runs on GPU by selecting that runtime and, optionally, a GPU count:
 
@@ -206,8 +206,8 @@ routed through the AI Gateway, and registered with LiteLLM when `auth_type` is
 | `nemotron-3-5-lightning-30b-a3b-cuda` | nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16 | 1 | |
 | `nemotron-3-super-120b-a12b-cuda` | nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8 | 4 | Hopper or Blackwell. On B200/B300 the model card fits it on one GPU: `--gpus 1` |
 | `nemotron-3-ultra-550b-a55b-cuda` | nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4 | 8 | NVFP4: Blackwell only (B200, B300) |
-| `vllm-xpu-llama-3-1-8b` | meta-llama/Llama-3.1-8B-Instruct | 1 | Intel Arc Pro B-Series (`vllm-xpu`). Gated: needs `HF_TOKEN` |
-| `vllm-xpu-gpt-oss-20b` | openai/gpt-oss-20b | 1 | Intel Arc Pro B-Series (`vllm-xpu`) |
+| `vllm-xpu-llama-3-1-8b` | meta-llama/Llama-3.1-8B-Instruct | 1 | Intel® Arc™ Pro B-Series GPU (`vllm-xpu`). Gated: needs `HF_TOKEN` |
+| `vllm-xpu-gpt-oss-20b` | openai/gpt-oss-20b | 1 | Intel® Arc™ Pro B-Series GPU (`vllm-xpu`) |
 
 The Nemotron models are reasoning models (`--reasoning-parser nemotron_v3`) with
 tool calling (`--tool-call-parser qwen3_coder`), using the flags from their model

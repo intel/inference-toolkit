@@ -2,12 +2,15 @@
 
 Start with the table. Each row is one job and one page. The sections under it are the same pages, grouped by folder, for when you already know the area.
 
-> **Toolkit Manager** installs, upgrades and tears down Intel® Inference Toolkit. Clone [that repository](https://github.com/intel/toolkit-manager), run every command from its root, and `init inference` clones this repository under `ext/`. The three-step quick start is in the [project README](../README.md#quick-start).
+> **Toolkit Manager** installs, upgrades and tears down Intel® Inference Toolkit. Clone [that repository](https://github.com/intel/toolkit-manager), run every command from its root, and `init inference` clones this repository under `ext/`. New here? Read [Meet](overview/meet.md), then [Prerequisites](getting-started/prerequisites.md) and the [Quickstart](getting-started/quickstart.md).
 
 ## Find a page
 
 | I want to… | Page |
 |---|---|
+| Know what the toolkit is and how it fits Toolkit Manager | [Meet Intel® Inference Toolkit](overview/meet.md) |
+| Check the machine before installing | [Prerequisites](getting-started/prerequisites.md) |
+| Install, deploy a first model and call it | [Quickstart](getting-started/quickstart.md) |
 | Deploy, update or remove a model with `model-manager` | [Deploy a model](getting-started/deploy-models.md) |
 | Get an endpoint and credentials, and list what is serving | [Accessing models](getting-started/accessing-models.md) |
 | Install and deploy models on OpenShift AI | [Deploy on OpenShift](deployment/openshift.md) |
@@ -22,17 +25,27 @@ Start with the table. Each row is one job and one page. The sections under it ar
 | Understand how memory and KV cache are sized | [Memory and KV-cache sizing](reference/memory-sizing.md) |
 | See the LiteLLM and Langfuse database setup | [Database architecture](reference/database.md) |
 | Fix a failed deploy, API call or pod | [Troubleshooting](faq-and-troubleshooting/troubleshooting.md) |
+| Get a short answer | [FAQ](faq-and-troubleshooting/frequently-asked-questions.md) |
 | Report a bug or change the toolkit | [Contributing](../CONTRIBUTING.md) |
 
 ## Folders
 
 | Folder | When you open it |
 |---|---|
-| `getting-started/` | Deploying a first model and calling it |
+| `overview/` | What the toolkit is |
+| `getting-started/` | Prerequisites, the quickstart, deploying a model and calling it |
 | `deployment/` | Other platforms |
 | `configuration/` | Models, engines, routing and the settings you edit after the install |
 | `reference/` | How the toolkit is built and how a request travels |
-| `faq-and-troubleshooting/` | Failures and their fixes |
+| `faq-and-troubleshooting/` | Short answers, failures and their fixes |
+
+## Start here
+
+| Guide | What it covers |
+|---|---|
+| [Meet Intel® Inference Toolkit](overview/meet.md) | What you get, and where it sits in Toolkit Manager |
+| [Prerequisites](getting-started/prerequisites.md) | What models add to Toolkit Manager's requirements: AMX, memory, storage, network, GPUs |
+| [Quickstart](getting-started/quickstart.md) | Toolkit Manager branch, auth choice, install, first model, first request |
 
 ## First model
 
@@ -54,7 +67,7 @@ Edit the YAML under `env/<name>/` and re-run `install inference`.
 | Guide | What it covers |
 |---|---|
 | [Model catalog](configuration/catalog.md) | The `models.yaml` catalog: every field, and auto-deploy at install time |
-| [Runtimes](configuration/runtimes.md) | vLLM (CPU, NVIDIA and Intel GPU) and OpenVINO: versions, images and per-workload defaults |
+| [Runtimes](configuration/runtimes.md) | Intel® Inference Microservices (IIMs), vLLM (CPU, NVIDIA and Intel® Arc™ GPUs) and OpenVINO: versions, images and per-workload defaults |
 | [Configuration](configuration/configuration.md) | Every option in `config.yaml`, plus the `MM_*` environment variables |
 | [Guardrails](configuration/guardrails.md) | Content-safety screening of LiteLLM requests with a guard model (Qwen3Guard) |
 | [Hybrid router](configuration/hybrid-router.md) | Complexity-tier and bandit routing behind one virtual model in LiteLLM |
@@ -75,6 +88,7 @@ Edit the YAML under `env/<name>/` and re-run `install inference`.
 | Guide | What it covers |
 |---|---|
 | [Troubleshooting](faq-and-troubleshooting/troubleshooting.md) | Common symptoms and their fixes |
+| [FAQ](faq-and-troubleshooting/frequently-asked-questions.md) | Short answers to the questions that come up most |
 
 ## Contribute
 

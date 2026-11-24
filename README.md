@@ -4,12 +4,12 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![Installed and operated by: Toolkit Manager](https://img.shields.io/badge/Installed%20and%20operated%20by-Toolkit%20Manager-0068B5)](https://github.com/intel/toolkit-manager)
-[![Platform: Intel® Xeon® and Intel® GPU](https://img.shields.io/badge/Platform-Intel%C2%AE%20Xeon%C2%AE%20%C2%B7%20Intel%C2%AE%20GPU-0068B5)](https://www.intel.com)
+[![Platform: Intel® Xeon® and Intel® Arc™ GPU](https://img.shields.io/badge/Platform-Intel%C2%AE%20Xeon%C2%AE%20%C2%B7%20Intel%C2%AE%20Arc%E2%84%A2%20GPU-0068B5)](https://www.intel.com)
 [![Serving: KServe](https://img.shields.io/badge/Serving-KServe-326CE5)](https://kserve.github.io/website/)
 [![Runtimes: vLLM · OVMS](https://img.shields.io/badge/Runtimes-vLLM%20%C2%B7%20OVMS-purple)](https://vllm.ai)
 [![API: OpenAI Compatible](https://img.shields.io/badge/API-OpenAI%20Compatible-green)](https://platform.openai.com/docs/api-reference)
 
-**Serve any Hugging Face model on Intel® Xeon® CPUs or Intel® GPUs with one command. Toolkit Manager installs and operates this toolkit.**
+**Serve any Hugging Face model on Intel® Xeon® CPUs or Intel® Arc™ GPUs with one command. Toolkit Manager installs and operates this toolkit.**
 
 > Provides the Ansible roles that stand up the model-serving stack — KServe, runtimes, AI gateway, LiteLLM, Langfuse — and **`model-manager`**, a CLI that takes a model from Hugging Face to a live OpenAI-compatible endpoint with NUMA-aware CPU pinning.
 
@@ -38,10 +38,10 @@ The result is a single OpenAI-compatible endpoint. The `model` field in the requ
 
 ## Architecture
 
-An inference request enters through the **LLM gateway**, which authenticates and authorizes it, then routes it to a serving engine — **vLLM** (on Xeon CPUs, or on Intel GPUs with `vllm-xpu`) or **OpenVINO™ Model Server** — and returns an OpenAI-compatible response. The gateway also provides model endpoints, user and key management, token telemetry, and monitoring. It all runs on a Kubernetes-orchestrated, Helm-packaged stack over Intel® Xeon® and Intel® GPU infrastructure.
+An inference request enters through the **LLM gateway**, which authenticates and authorizes it, then routes it to a serving engine — **vLLM** (on Xeon CPUs, or on Intel® Arc™ Pro B-Series GPUs with `vllm-xpu`) or **OpenVINO™ Model Server** — and returns an OpenAI-compatible response. The gateway also provides model endpoints, user and key management, token telemetry, and monitoring. It all runs on a Kubernetes-orchestrated, Helm-packaged stack over Intel® Xeon® and Intel® GPU infrastructure.
 
 <p align="center">
-  <img src="docs/assets/intel-inference-toolkit-architecture.png" alt="Intel® Inference Toolkit: run and scale generative AI inference on a simplified AI stack, on Intel® GPU D-series and Intel® Xeon®, with open-source orchestration. Packaged one-click software deployment. An inference request enters the stack and an inference response leaves it. Top to bottom: API applications and services (samples, API apps and functions, OpenAI-compatible API endpoints); LLM gateway (authentication and authorization, model endpoints, user and key management, token telemetry, monitoring); inferencing engines (vLLM, SGLang, OVMS); orchestration (Kubernetes orchestrator, Helm charts); infrastructure core components (Ubuntu 22.04, Xeon and GPU software: operators, firmware, and drivers)." />
+  <img src="docs/assets/intel-inference-toolkit-architecture.png" alt="Intel® Inference Toolkit: run and scale generative AI inference on a simplified AI stack, on Intel® GPU D-series and Intel® Xeon®, with open-source orchestration. Packaged one-click software deployment. An inference request enters the stack and an inference response leaves it. Top to bottom: API applications and services (samples, API apps and functions, OpenAI-compatible API endpoints); LLM gateway (authentication and authorization, model endpoints, user and key management, token telemetry, monitoring); inferencing engines (vLLM, OVMS); orchestration (Kubernetes orchestrator, Helm charts); infrastructure core components (Ubuntu 22.04, Xeon and GPU software: operators, firmware, and drivers)." />
 </p>
 
 > Under the hood there are two gateways: the edge gateway terminates TLS and authenticates, while the in-cluster AI gateway routes to the model the request body names. See the [Architecture deep-dive](docs/reference/architecture.md) and [Inference Request Flow](docs/reference/request-flow.md) for the full component list and execution flow.
@@ -59,16 +59,23 @@ An inference request enters through the **LLM gateway**, which authenticates and
 > below from the Toolkit Manager folder:
 >
 > ```bash
-> git clone https://github.com/intel/toolkit-manager.git
+> git clone https://github.com/intel/toolkit-manager.git   # main: clones this repo's main, which these docs describe
 > cd toolkit-manager
 > ./toolkit_manager.sh configure        # one-time machine prep; answer y to the prompt
 > ./toolkit_manager.sh init inference   # creates env/local/ and clones this repo into ext/
 > ```
 >
+> **Which branch:** Toolkit Manager `main` installs this repository's `main`. For the
+> latest release, clone with `--branch v1.2.0` instead: it installs Intel® Inference
+> Toolkit v1.1.0, so read the
+> [v1.1.0 docs](https://github.com/intel/inference-toolkit/tree/v1.1.0) with it.
+>
 > Intel® Inference Toolkit needs the cluster, gateway, sign-in and storage that Toolkit
 > Manager provides. The `install inference` step below brings those up with it. Hardware
 > and software requirements:
-> [Toolkit Manager prerequisites](https://github.com/intel/toolkit-manager/blob/main/docs/getting-started/prerequisites.md).
+> [Toolkit Manager prerequisites](https://github.com/intel/toolkit-manager/blob/main/docs/getting-started/prerequisites.md),
+> plus what models add: [Prerequisites](docs/getting-started/prerequisites.md). The full walk-through,
+> with both auth modes: [Quickstart](docs/getting-started/quickstart.md).
 
 ### Step 1 — Install the inference stack
 
@@ -144,11 +151,24 @@ See what is serving:
 kubectl get llminferenceservices,inferenceservices -n llm-inference
 ```
 
-> [!NOTE]
-> **Using `auth_type: litellm_vkey` instead?** Set it in `env/<env>/config.inference.yaml`.
-> Keycloak is still deployed for sign-in, but API clients authenticate with a LiteLLM master or
-> virtual key on `litellm.<your-domain>` — not a JWT on `inference.<your-domain>`. Full walkthrough →
-> [Accessing Models](docs/getting-started/accessing-models.md).
+**Shortest path, with a LiteLLM key.** With `auth_type: litellm_vkey` (set it in
+`env/local/config.inference.yaml` before Step 1, as Intel® Agent Toolkit does) there is no
+token to fetch: call LiteLLM with its admin key.
+
+```bash
+GATEWAY_IP=$(kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=eg-gateway \
+  -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}')
+DOMAIN=$(yq '.base_domain_name' env/local/global_config.yaml)
+MK=$(kubectl get secret litellm-master-key -n litellm -o jsonpath='{.data.master_key}' | base64 -d)
+
+curl -s --noproxy '*' --cacert env/local/logs/ai-solutions-ca.crt --resolve "litellm.$DOMAIN:443:$GATEWAY_IP" \
+  -H "Authorization: Bearer $MK" -H "Content-Type: application/json" \
+  -d '{"model":"qwen3-0-6b","messages":[{"role":"user","content":"Hello!"}],"max_tokens":64}' \
+  "https://litellm.$DOMAIN/v1/chat/completions"
+```
+
+Keep the admin key to yourself and give each application its own virtual key; Keycloak
+still handles sign-in to the web UIs. More → [Accessing Models](docs/getting-started/accessing-models.md).
 
 Everything speaks the OpenAI-compatible API, so any tool that works with OpenAI works against your stack.
 

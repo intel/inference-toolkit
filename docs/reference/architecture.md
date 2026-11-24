@@ -113,10 +113,11 @@ deploy:
 
 | Runtime | Object | Routing |
 |---|---|---|
+| Intel® Inference Microservices (`iims`, the default) | `LLMInferenceService` | `epp` — EPP endpoint picker; `direct` for embedding and rerank models |
 | vLLM (`vllm`) | `LLMInferenceService` | `epp` — EPP endpoint picker; `direct` for embedding and rerank models |
 | OpenVINO (`openvino`) | `LLMInferenceService` | `epp` — EPP endpoint picker; `direct` for embedding and rerank models |
 | vLLM on NVIDIA GPUs (`vllm-cuda`) | `LLMInferenceService` | `epp` — EPP endpoint picker; `direct` for embedding and rerank models |
-| vLLM on Intel Arc Pro B-Series (`vllm-xpu`) | `LLMInferenceService` | `epp` — EPP endpoint picker |
+| vLLM on Intel® Arc™ Pro B-Series GPUs (`vllm-xpu`) | `LLMInferenceService` | `epp` — EPP endpoint picker |
 
 All land in `llm_services_namespace` (default `llm-inference`). `--routing epp | direct |
 aigateway` overrides the routing for one deploy.

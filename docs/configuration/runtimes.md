@@ -176,9 +176,9 @@ resource, for example `vllm-xpu` below with `gpu.intel.com/xe` from the Intel GP
 [Deploy on GPU nodes](../getting-started/deploy-models.md#deploy-on-gpu-nodes) for the GPU
 pre-flight and what changes in the rendered manifest.
 
-### vLLM on Intel Arc Pro B-Series (`vllm-xpu`)
+### vLLM on Intel® Arc™ Pro B-Series GPUs (`vllm-xpu`)
 
-A GPU runtime like `vllm-cuda`, for Intel Arc Pro B-Series (Battlemage) cards, using the XPU
+A GPU runtime like `vllm-cuda`, for Intel® Arc™ Pro B-Series (Battlemage) GPUs, using the XPU
 build of vLLM. It is flat (no version axis: `image:` is the one image every model runs) and an
 `LLMInferenceService`, so it gets the gateway route, the `Ready` condition that `--wait` and
 Headlamp read, and the same GPU pre-flight as `vllm-cuda`. Config lives under
@@ -228,7 +228,7 @@ A model sets `gpus` (per pod; also the default `--tensor-parallel-size`):
 - **Fixed replicas.** Like `vllm-cuda`, it defines no autoscaling signal.
 - **Not on OpenShift.** Its own `container` is refused there, as for OpenVINO: OpenShift AI's template starts vLLM itself.
 - **Single-GPU catalog models.** The shipped models use one GPU. Tensor parallelism (`gpus` > 1)
-  needs oneCCL's `pidfd_getfd`, which the default seccomp profile may block on Arc Pro B70.
+  needs oneCCL's `pidfd_getfd`, which the default seccomp profile may block on the Intel® Arc™ Pro B70.
 
 ## OpenVINO (OVMS)
 

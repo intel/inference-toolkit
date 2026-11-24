@@ -199,7 +199,7 @@ def _merge(base: dict, overlay: dict) -> dict:
 
 @dataclass(frozen=True)
 class SizingConstants:
-    """The estimated parts of memory: auto (docs/reference/memory_sizing.md#why-these-constants), measured on Xeon with
+    """The estimated parts of memory: auto (docs/reference/memory-sizing.md#why-these-constants), measured on Xeon with
     vLLM 0.24 / 0.28. Overridden per runtime by runtimes.<name>.sizing in models.yaml or runtimes/<name>/values.yaml."""
     overhead_gib: float = 3         # runtime per TP worker: its process, kernel scratch, one batch's activations
     headroom: float = 1.15          # on weights + load + runtime; the KV pool is allocated exactly, so none on it

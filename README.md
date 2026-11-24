@@ -1,24 +1,24 @@
-![Intel® Inference Toolkit](docs/images/banner.jpg)
+![Intel® Inference Toolkit](docs/assets/banner.jpg)
 
 # Intel® Inference Toolkit
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-[![Installed and operated by: Toolkit Manager](https://img.shields.io/badge/Installed%20and%20operated%20by-Toolkit%20Manager-0068B5)](https://github.com/intel/enterprise-ai-solutions)
-[![Platform: Intel® Xeon](https://img.shields.io/badge/Platform-Intel%C2%AE%20Xeon%C2%AE-0068B5)](https://www.intel.com/xeon)
+[![Installed and operated by: Toolkit Manager](https://img.shields.io/badge/Installed%20and%20operated%20by-Toolkit%20Manager-0068B5)](https://github.com/intel/toolkit-manager)
+[![Platform: Intel® Xeon® and Intel® Arc™ GPU](https://img.shields.io/badge/Platform-Intel%C2%AE%20Xeon%C2%AE%20%C2%B7%20Intel%C2%AE%20Arc%E2%84%A2%20GPU-0068B5)](https://www.intel.com)
 [![Serving: KServe](https://img.shields.io/badge/Serving-KServe-326CE5)](https://kserve.github.io/website/)
 [![Runtimes: vLLM · OVMS](https://img.shields.io/badge/Runtimes-vLLM%20%C2%B7%20OVMS-purple)](https://vllm.ai)
 [![API: OpenAI Compatible](https://img.shields.io/badge/API-OpenAI%20Compatible-green)](https://platform.openai.com/docs/api-reference)
 
-**Serve any Hugging Face model on Intel® Xeon® CPUs with one command. Toolkit Manager installs and operates this toolkit.**
+**Serve any Hugging Face model on Intel® Xeon® CPUs or Intel® Arc™ GPUs with one command. Toolkit Manager installs and operates this toolkit.**
 
 > Provides the Ansible roles that stand up the model-serving stack — KServe, runtimes, AI gateway, LiteLLM, Langfuse — and **`model-manager`**, a CLI that takes a model from Hugging Face to a live OpenAI-compatible endpoint with NUMA-aware CPU pinning.
 
 > [!IMPORTANT]
 > **This repository is not used on its own.**
-> [**Toolkit Manager**](https://github.com/intel/enterprise-ai-solutions)
+> [**Toolkit Manager**](https://github.com/intel/toolkit-manager)
 > installs and operates it. Toolkit Manager clones this repository to
 > `ext/enterprise.ai-inference/` and brings up the Kubernetes cluster and the services
-> (cert-manager, Istio, MetalLB, Envoy Gateway, PostgreSQL, Keycloak, MinIO, observability)
+> (cert-manager, Istio, MetalLB, Envoy Gateway, PostgreSQL, Keycloak, SeaweedFS, observability)
 > this toolkit depends on.
 > Every command below runs from the **Toolkit Manager repo root**, not from here.
 
@@ -34,17 +34,17 @@ The Ansible roles here deploy the serving infrastructure itself: KServe for the 
 
 The result is a single OpenAI-compatible endpoint. The `model` field in the request body selects which model answers, so any OpenAI SDK client works unchanged.
 
-> Want the full picture? See [Architecture](docs/reference/architecture.md) and [Inference Request Flow](docs/reference/request_flow.md).
+> Want the full picture? See [Architecture](docs/reference/architecture.md) and [Inference Request Flow](docs/reference/request-flow.md).
 
 ## Architecture
 
-An inference request enters through the **LLM gateway**, which authenticates and authorizes it, then routes it to a serving engine — **vLLM** or **OpenVINO™ Model Server** — and returns an OpenAI-compatible response. The gateway also provides model endpoints, user and key management, token telemetry, and monitoring. It all runs on a Kubernetes-orchestrated, Helm-packaged stack over Intel® Xeon® infrastructure.
+An inference request enters through the **LLM gateway**, which authenticates and authorizes it, then routes it to a serving engine — **vLLM** (on Xeon CPUs, or on Intel® Arc™ Pro B-Series GPUs with `vllm-xpu`) or **OpenVINO™ Model Server** — and returns an OpenAI-compatible response. The gateway also provides model endpoints, user and key management, token telemetry, and monitoring. It all runs on a Kubernetes-orchestrated, Helm-packaged stack over Intel® Xeon® and Intel® GPU infrastructure.
 
 <p align="center">
-  <img src="docs/assets/intel-inference-toolkit-architecture.png" alt="Intel® Inference Toolkit: run and scale generative AI inference on a simplified AI stack, on Intel® GPU D-series and Intel® Xeon®, with open-source orchestration. Packaged one-click software deployment. An inference request enters the stack and an inference response leaves it. Top to bottom: API applications and services (samples, API apps and functions, OpenAI-compatible API endpoints); LLM gateway (authentication and authorization, model endpoints, user and key management, token telemetry, monitoring); inferencing engines (vLLM, SGLang, OVMS); orchestration (Kubernetes orchestrator, Helm charts); infrastructure core components (Ubuntu 22.04, Xeon and GPU software: operators, firmware, and drivers)." />
+  <img src="docs/assets/intel-inference-toolkit-architecture.png" alt="Intel® Inference Toolkit: run and scale generative AI inference on a simplified AI stack, on Intel® GPU D-series and Intel® Xeon®, with open-source orchestration. Packaged one-click software deployment. An inference request enters the stack and an inference response leaves it. Top to bottom: API applications and services (samples, API apps and functions, OpenAI-compatible API endpoints); LLM gateway (authentication and authorization, model endpoints, user and key management, token telemetry, monitoring); inferencing engines (vLLM, OVMS); orchestration (Kubernetes orchestrator, Helm charts); infrastructure core components (Ubuntu 22.04, Xeon and GPU software: operators, firmware, and drivers)." />
 </p>
 
-> Under the hood there are two gateways: the edge gateway terminates TLS and authenticates, while the in-cluster AI gateway routes to the model the request body names. See the [Architecture deep-dive](docs/reference/architecture.md) and [Inference Request Flow](docs/reference/request_flow.md) for the full component list and execution flow.
+> Under the hood there are two gateways: the edge gateway terminates TLS and authenticates, while the in-cluster AI gateway routes to the model the request body names. See the [Architecture deep-dive](docs/reference/architecture.md) and [Inference Request Flow](docs/reference/request-flow.md) for the full component list and execution flow.
 
 ---
 
@@ -53,33 +53,47 @@ An inference request enters through the **LLM gateway**, which authenticates and
 **Stands up model serving on a freshly prepared machine, then serves an LLM.** In three steps you'll install Intel® Inference Toolkit, deploy a model, and see it answer.
 
 > [!NOTE]
-> **Prerequisite:** Toolkit Manager installs and operates this toolkit. `toolkit_manager.sh` is
-> its installer, and it clones this repository into `ext/enterprise.ai-inference/`. Clone the
-> [**Toolkit Manager**](https://github.com/intel/enterprise-ai-solutions)
-> repo, prep the machine, and create an environment, then run every command below from its root:
+> **Before you start:** Toolkit Manager installs and operates this toolkit. Its installer,
+> `toolkit_manager.sh`, clones this repository into `ext/enterprise.ai-inference/`. Get
+> Toolkit Manager, prepare the machine, and create an environment, then run every command
+> below from the Toolkit Manager folder:
 >
 > ```bash
-> git clone https://github.com/intel/enterprise-ai-solutions.git
-> cd enterprise-ai-solutions
-> ./toolkit_manager.sh configure && ./toolkit_manager.sh init local
+> git clone https://github.com/intel/toolkit-manager.git   # main: clones this repo's main, which these docs describe
+> cd toolkit-manager
+> ./toolkit_manager.sh configure        # one-time machine prep; answer y to the prompt
+> ./toolkit_manager.sh init inference   # creates env/local/ and clones this repo into ext/
 > ```
 >
-> Intel® Inference Toolkit needs the cluster, gateway, auth, and storage Toolkit Manager
-> provides — the `install inference` step below brings those up with it. Full list →
-> [Toolkit Manager prerequisites](https://github.com/intel/enterprise-ai-solutions/blob/main/docs/quickstart/prerequisites.md).
+> **Which branch:** Toolkit Manager `main` installs this repository's `main`. For the
+> latest release, clone with `--branch v1.2.0` instead: it installs Intel® Inference
+> Toolkit v1.1.0, so read the
+> [v1.1.0 docs](https://github.com/intel/inference-toolkit/tree/v1.1.0) with it.
+>
+> Intel® Inference Toolkit needs the cluster, gateway, sign-in and storage that Toolkit
+> Manager provides. The `install inference` step below brings those up with it. Hardware
+> and software requirements:
+> [Toolkit Manager prerequisites](https://github.com/intel/toolkit-manager/blob/main/docs/getting-started/prerequisites.md),
+> plus what models add: [Prerequisites](docs/getting-started/prerequisites.md). The full walk-through,
+> with both auth modes: [Quickstart](docs/getting-started/quickstart.md).
 
 ### Step 1 — Install the inference stack
 
 Deploys KServe, the ServingRuntimes, the AI gateway, the Keycloak realm and client, and — with `auth_type: litellm_vkey` or `litellm_enabled: true` — LiteLLM and Langfuse. No models are deployed yet.
 
 ```bash
-./toolkit_manager.sh install inference
+./toolkit_manager.sh install inference      # allow up to an hour on a first install
 
 export KUBECONFIG=$(pwd)/env/local/kubeconfig.yaml
-kubectl get pods -n kserve   # controller should be Running
+kubectl get pods -n kserve                  # the KServe controller shows Running
 ```
 
-Settings for this toolkit live in `config.yaml` at this repo's root. Toolkit Manager loads that file when it installs. See [Configuration](docs/customize/configuration.md) for every option, including the `envoy` / `agentgateway` choice and the cluster CPU-pinning policy.
+A successful run ends with an `INSTALLATION COMPLETE` banner.
+
+This toolkit's settings live in `env/local/config.inference.yaml`. `init` copies it from
+this repo's [`config.yaml`](config.yaml), and the install reads your copy. Edit it, then
+run `install inference` again. See [Configuration](docs/configuration/configuration.md) for every
+option, including the Envoy AI Gateway version and the cluster CPU-pinning policy.
 
 ### Step 2 — Deploy a model
 
@@ -95,31 +109,41 @@ Or skip the catalog and deploy any Hugging Face model directly:
 ./model-manager deploy --hfid Qwen/Qwen3-0.6B --cpu 8 --wait   # memory sized from the model
 ```
 
+`--wait` blocks until the model is ready (up to 15 minutes by default). Run it again any
+time: an unchanged model is left as it is.
+
 > [!IMPORTANT]
 > Gated models (Llama, Mistral, Gemma) require a free [Hugging Face token](https://huggingface.co/settings/tokens).
-> Export it as `HF_TOKEN=hf_...` before deploying.
+> Run `export HF_TOKEN=hf_...` before deploying.
 
-When the command returns it prints the inference endpoint and a ready-to-run `curl` example. Full flag reference → [Deploy a Model](docs/deploy/deploy_models.md).
+When the command returns it prints the inference endpoint and a ready-to-run `curl` example. Full flag reference → [Deploy a Model](docs/getting-started/deploy-models.md).
 
 ### Step 3 — Send your first request
 
-With the default `auth_type: jwt`, the helper script auto-discovers the gateway IP and fetches a JWT from the cluster:
+With the default `auth_type: jwt`, API clients send a Keycloak token (a JWT). The helper
+script finds the gateway address and gets a token from the cluster for you:
 
 ```bash
 source ./ext/enterprise.ai-inference/model_manager/scripts/get-keycloak-token.sh
-# Exports: TOKEN, GATEWAY_IP, GATEWAY_DOMAIN
+# Exports: TOKEN, GATEWAY_IP, GATEWAY_DOMAIN, GATEWAY_URL
 ```
 
-Call the model — the `model` field selects which one answers:
+Call the model. The `model` field selects which one answers:
 
 ```bash
-curl -sk --noproxy '*' \
+curl -s --noproxy '*' \
+  --cacert env/local/logs/ai-solutions-ca.crt \
+  --resolve "$GATEWAY_DOMAIN:443:$GATEWAY_IP" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  --resolve "inference.inteltoolkits.ai:443:$GATEWAY_IP" \
   -d '{"model":"qwen3-0-6b","messages":[{"role":"user","content":"Hello!"}],"max_tokens":64}' \
-  https://inference.inteltoolkits.ai/v1/chat/completions
+  "$GATEWAY_URL/v1/chat/completions"
 ```
+
+A JSON reply with a `choices` list means the model is serving. `--resolve` sends the
+request to the gateway IP without an `/etc/hosts` entry, and `--cacert` trusts the
+installer's self-signed certificate authority. The token lasts 15 minutes; `source` the
+script again for a new one.
 
 See what is serving:
 
@@ -127,11 +151,24 @@ See what is serving:
 kubectl get llminferenceservices,inferenceservices -n llm-inference
 ```
 
-> [!NOTE]
-> **Using `auth_type: litellm_vkey` instead?** Set it in `env/<env>/config.inference.yaml`.
-> Keycloak is still deployed for sign-in, but API clients authenticate with a LiteLLM master or
-> virtual key on `litellm.<your-domain>` — not a JWT on `inference.<your-domain>`. Full walkthrough →
-> [Accessing Models](docs/deploy/accessing_models.md).
+**Shortest path, with a LiteLLM key.** With `auth_type: litellm_vkey` (set it in
+`env/local/config.inference.yaml` before Step 1, as Intel® Agent Toolkit does) there is no
+token to fetch: call LiteLLM with its admin key.
+
+```bash
+GATEWAY_IP=$(kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=eg-gateway \
+  -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}')
+DOMAIN=$(yq '.base_domain_name' env/local/global_config.yaml)
+MK=$(kubectl get secret litellm-master-key -n litellm -o jsonpath='{.data.master_key}' | base64 -d)
+
+curl -s --noproxy '*' --cacert env/local/logs/ai-solutions-ca.crt --resolve "litellm.$DOMAIN:443:$GATEWAY_IP" \
+  -H "Authorization: Bearer $MK" -H "Content-Type: application/json" \
+  -d '{"model":"qwen3-0-6b","messages":[{"role":"user","content":"Hello!"}],"max_tokens":64}' \
+  "https://litellm.$DOMAIN/v1/chat/completions"
+```
+
+Keep the admin key to yourself and give each application its own virtual key; Keycloak
+still handles sign-in to the web UIs. More → [Accessing Models](docs/getting-started/accessing-models.md).
 
 Everything speaks the OpenAI-compatible API, so any tool that works with OpenAI works against your stack.
 
@@ -143,17 +180,17 @@ The Quick Start deploys one catalog model with defaults. From here you can chang
 
 | Goal | Guide |
 |---|---|
-| Deploy, update, and remove models | [Deploy a Model](docs/deploy/deploy_models.md) |
-| Endpoints and authentication modes | [Accessing Models](docs/deploy/accessing_models.md) |
-| Add models — the `models.yaml` catalog | [Model Catalog](docs/customize/catalog.md) |
-| Engines, versions, and per-workload defaults | [Runtimes](docs/customize/runtimes.md) |
-| All configuration options | [Configuration](docs/customize/configuration.md) |
+| Deploy, update, and remove models | [Deploy a Model](docs/getting-started/deploy-models.md) |
+| Endpoints and authentication modes | [Accessing Models](docs/getting-started/accessing-models.md) |
+| Add models — the `models.yaml` catalog | [Model Catalog](docs/configuration/catalog.md) |
+| Engines, versions, and per-workload defaults | [Runtimes](docs/configuration/runtimes.md) |
+| All configuration options | [Configuration](docs/configuration/configuration.md) |
 | Components, roles, and how Toolkit Manager installs this toolkit | [Architecture](docs/reference/architecture.md) |
-| How a request reaches a model | [Inference Request Flow](docs/reference/request_flow.md) |
-| Content-safety screening of LiteLLM requests | [Guardrails](docs/customize/guardrails.md) |
-| Route each request to a model by prompt | [Hybrid Router](docs/customize/hybrid-router.md), [vLLM Semantic Router](docs/customize/vllm-semantic-router.md) |
-| NUMA-aware CPU pinning | [CPU Pinning & NUMA](docs/reference/cpu_pinning.md) |
-| Something isn't working | [Troubleshooting](docs/troubleshooting.md) |
+| How a request reaches a model | [Inference Request Flow](docs/reference/request-flow.md) |
+| Content-safety screening of LiteLLM requests | [Guardrails](docs/configuration/guardrails.md) |
+| Route each request to a model by prompt | [Hybrid Router](docs/configuration/hybrid-router.md), [vLLM Semantic Router](docs/configuration/semantic-router.md) |
+| NUMA-aware CPU pinning | [CPU Pinning & NUMA](docs/reference/cpu-pinning.md) |
+| Something isn't working | [Troubleshooting](docs/faq-and-troubleshooting/troubleshooting.md) |
 
 ---
 
@@ -164,10 +201,10 @@ Licensed under the [Apache License, Version 2.0](https://www.apache.org/licenses
 ## Links
 
 - [Documentation Index](docs/README.md)
-- [GitHub Repository](https://github.com/intel/enterprise-inference)
-- [Toolkit Manager](https://github.com/intel/enterprise-ai-solutions) — installs and operates this toolkit
+- [GitHub Repository](https://github.com/intel/inference-toolkit)
+- [Toolkit Manager](https://github.com/intel/toolkit-manager) — installs and operates this toolkit
 - [Architecture](docs/reference/architecture.md)
-- [Inference Request Flow](docs/reference/request_flow.md)
+- [Inference Request Flow](docs/reference/request-flow.md)
 
 ---
 

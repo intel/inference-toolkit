@@ -1,6 +1,6 @@
 # Model catalog: what model-manager can deploy, and the engines that serve it.
-# Fields, server binding, cpu: auto, chat templates: docs/customize/catalog.md
-# Runtimes, categories, KV cache, how settings combine: docs/customize/runtimes.md
+# Fields, server binding, cpu: auto, chat templates: docs/configuration/catalog.md
+# Runtimes, categories, KV cache, how settings combine: docs/configuration/runtimes.md
 # Usage: ./model-manager deploy <name> --wait | undeploy <name> | list
 
 defaults:
@@ -297,7 +297,7 @@ models:
     model_id: BAAI/bge-reranker-base
     category: rerank
 
-  # ── GPU: NVIDIA (vllm-cuda); GPU pre-flight: docs/deploy/deploy_models.md#the-gpu-pre-flight ──
+  # ── GPU: NVIDIA (vllm-cuda); GPU pre-flight: docs/getting-started/deploy-models.md#the-gpu-pre-flight ──
 
   # LLM — small Qwen3 on 1 NVIDIA GPU. Smoke test for the GPU path.
   - name: qwen3-0-6b-cuda
@@ -396,7 +396,7 @@ runtimes:
   # Upstream vLLM CPU images: pick with --server vllm [--server-version V].
   vllm:
     default_version: "0.28.0"
-    # sizing: memory: auto constants, docs/reference/memory_sizing.md#tuning-the-constants
+    # sizing: memory: auto constants, docs/reference/memory-sizing.md#tuning-the-constants
     env:
       USER: "vllm"
       VLLM_CPU_NUM_OF_RESERVED_CPU: "1"

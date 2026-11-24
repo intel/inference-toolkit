@@ -13,24 +13,13 @@ keycloak_client_id: "inference-client"
 # keycloak_token_lifespan: 900  # JWT access token lifespan in seconds (default: 15 min)
 
 # --- AI Gateway ---
-# Which in-cluster AI gateway sits behind the edge (eg-gateway) and dispatches
-# to the KServe model backends. Both speak the OpenAI protocol on the same
-# unified URL and route to InferencePool/Service backends — only the data plane
-# and CRDs differ.
-#   envoy        — Envoy AI Gateway (AIGatewayRoute CRDs, EPP endpoint picker)
-#   agentgateway — agentgateway (native Gateway API HTTPRoute → InferencePool,
-#                  plus MCP / A2A support for the agentic layer)
-ai_gateway_provider: "envoy"              # envoy | agentgateway
+# Envoy AI Gateway sits behind the edge (eg-gateway) and dispatches to the KServe model backends.
+ai_gateway_provider: "envoy"
 
-# --- Envoy AI Gateway (used when ai_gateway_provider=envoy) ---
 # envoy_ai_gateway_version: "1.2.1"  # default: the release built for the platform Envoy Gateway
 envoy_ai_gateway_namespace: "envoy-ai-gateway-system"
 # Inference host: inference.<base_domain_name> (or <base_domain_name>/inference in
 # path mode).
-
-# --- agentgateway (used when ai_gateway_provider=agentgateway) ---
-# agentgateway_version: "1.3.1"
-# agentgateway_namespace: "agentgateway-system"
 
 # --- KServe ---
 # kserve_version: "0.18.0"         # default: 0.18.0, or 0.21.0 with envoy_gateway_upgrade: true
@@ -54,7 +43,7 @@ envoy_ai_gateway_namespace: "envoy-ai-gateway-system"
 # litellm_allow_pod_network: true   # with Istio: let callers outside the mesh (e.g. agent sandboxes) reach LiteLLM
 # litellm_allowed_source_cidrs: ["<cidr>"]   # explicit source ranges instead of the pod network
 # guardrails_enabled: false     # content-safety guardrail; default: on with auth_type=litellm_vkey
-# guardrail_model: "qwen3guard" # guard model from the catalog (docs/customize/guardrails.md)
+# guardrail_model: "qwen3guard" # guard model from the catalog (docs/configuration/guardrails.md)
 
 # --- Langfuse ---
 # langfuse_enabled: false       # tracing for LiteLLM; default: on whenever LiteLLM is on
@@ -109,7 +98,7 @@ llm_services_deploy_models: false
 # --- vLLM Semantic Router (optional, off by default) ---
 # Classifier-based intelligent routing: one endpoint auto-selects the best-fit
 # model per request. Opt-in and additive — direct model calls are unaffected.
-# Needs ai_gateway_provider: envoy. Guide: docs/customize/vllm-semantic-router.md
+# Guide: docs/configuration/semantic-router.md
 # vllm_sr_enabled: true
 # vllm_sr_route_models:                     # models the router may pick from (default: discovered)
 #   - qwen3-4b
@@ -121,7 +110,7 @@ llm_services_deploy_models: false
 # --- Hybrid Router (optional, off by default; needs LiteLLM) ---
 # Complexity-tier + multi-armed-bandit routing inside LiteLLM. Clients call the
 # hybrid-router model. Router code: roles/litellm/files/router/
-# Guide: docs/customize/hybrid-router.md
+# Guide: docs/configuration/hybrid-router.md
 # hybrid_router_enabled: true
 # hybrid_router_tier_candidates:            # deployed models per complexity tier
 #   SIMPLE:  [qwen3-4b]

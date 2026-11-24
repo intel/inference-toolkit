@@ -1,5 +1,7 @@
 # Memory & KV-Cache Sizing
 
+[← Docs index](../README.md)
+
 `memory: auto` makes `model-manager deploy` size a vLLM model's pod memory, KV cache and
 context from the model itself: its Hugging Face `config.json` (layer layout), its
 safetensors sizes (weights) and the engine args it is served with. Only those small JSON
@@ -177,7 +179,7 @@ These run before the weights download. Only the topology check also runs with `-
 | Topology | TP doesn't split the attention heads, or neither divides nor is divided by the KV heads | Abort |
 | Fit | A set `memory` < weights + load + TP × (KV + 3 GiB), without headroom | Abort, with the numbers |
 | NUMA | One worker's share, (weights + load) ÷ TP + KV + 3 GiB, exceeds one NUMA node | Abort, suggesting the smallest `--tp` that fits (with the KV at that TP), or a lower `kv_streams` / KV / context. TP is never changed for you |
-| Placement | No usable node has the pod's CPU and memory free | Abort: the pod would stay Pending ([CPU Pinning & NUMA](cpu_pinning.md#pre-flight-capacity-check)) |
+| Placement | No usable node has the pod's CPU and memory free | Abort: the pod would stay Pending ([CPU Pinning & NUMA](cpu-pinning.md#pre-flight-capacity-check)) |
 
 - **Why the NUMA check:** vLLM binds each worker's memory to its NUMA node (MEMBIND), so a
   worker fails at load past one node, even under the pod limit.

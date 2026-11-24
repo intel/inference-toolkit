@@ -370,4 +370,4 @@
            if vllm_sr_dashboard_enabled | bool and vllm_sr_gateway_publish | bool
            else 'Dashboard: deployed, not published (vllm_sr_gateway_publish)' if vllm_sr_dashboard_enabled | bool
            else 'Dashboard: off (vllm_sr_dashboard_enabled)' }}
-      - "User guide: docs/customize/vllm-semantic-router.md"
+      - "User guide: docs/configuration/semantic-router.md"

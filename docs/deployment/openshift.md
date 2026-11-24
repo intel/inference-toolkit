@@ -1,5 +1,7 @@
 # Deploy on OpenShift
 
+[← Docs index](../README.md)
+
 > [!NOTE]
 > Validated on single-node OpenShift 4.22 with OpenShift AI 3.3. See
 > [Known gaps](#known-gaps) for what is not supported yet.
@@ -16,7 +18,7 @@ detects. Nothing in `global_config.yaml` or `models.yaml` changes between platfo
 
 1. **Install the prerequisites:** the operators, the DataScienceCluster and a default
    StorageClass. Follow
-   [Deploy on OpenShift](https://github.com/intel/enterprise-ai-solutions/blob/main/docs/deploy/openshift.md)
+   [Deploy on OpenShift](https://github.com/intel/toolkit-manager/blob/main/docs/deployment/openshift.md)
    in the platform repo.
 2. **Install the platform layer:** run `./toolkit_manager.sh install platform --env <env>`
    (see that guide's *Installer configuration*).
@@ -30,8 +32,8 @@ detects. Nothing in `global_config.yaml` or `models.yaml` changes between platfo
 
 | Component | On OpenShift |
 |-----------|--------------|
-| `kserve` | **Checks** that OpenShift AI is installed: a DataScienceCluster with KServe `Managed`, the KServe controllers in `redhat-ods-applications`, and the LLMInferenceService and InferencePool CRDs. It installs nothing. Then it sets up the inference Gateway `openshift-ingress/openshift-ai-inference`: it creates the Gateway if it is missing, issues it a certificate for `inference.<domain>` from the platform CA (`gateway_tls_mode: custom` copies the operator's certificate instead), publishes it through a passthrough Route on `inference.<domain>`, and adds a Gateway-wide Keycloak `AuthPolicy` (Connectivity Link) when `auth_type: jwt`. Teardown does nothing. |
-| `envoy_ai_gateway`, `agentgateway` | Skipped. Models are routed by OpenShift AI's inference Gateway at `/<namespace>/<model>/v1/...`. There is no unified `/v1` endpoint (AIGatewayRoute). |
+| `kserve` | **Checks** that OpenShift AI is installed: a DataScienceCluster with KServe `Managed`, the KServe controllers in `redhat-ods-applications`, and the LLMInferenceService and InferencePool CRDs. It installs nothing. Then it sets up the inference Gateway `openshift-ingress/openshift-ai-inference`: it creates the Gateway if it is missing (a Gateway that exists and was not created by the installer is used as is, with no certificate, Route or AuthPolicy added: expose and secure it yourself), issues it a certificate for `inference.<domain>` from the platform CA (`gateway_tls_mode: custom` copies your platform gateway certificate instead), publishes it through a passthrough Route on `inference.<domain>`, and adds a Gateway-wide Keycloak `AuthPolicy` (Connectivity Link) when `auth_type: jwt`. Teardown does nothing. |
+| `envoy_ai_gateway` | Skipped. Models are routed by OpenShift AI's inference Gateway at `/<namespace>/<model>/v1/...`. There is no unified `/v1` endpoint (AIGatewayRoute). |
 | `keycloak_config` | Unchanged, except that `kcadm` keeps its session in `/tmp`, because RHBK's `HOME=/` is not writable for the UID that the SCC assigns. |
 | `nri_cpu_balloons` (platform repo) | Grants the SCC, and selects OpenShift AI model pods into `model-balloon-tp1` by their `kserve.io/component=workload` label. v1alpha1 cannot annotate pods (see below). |
 | `llm_services` | Waits for the KServe controller in `redhat-ods-applications`. Gives the model-store PVC `ReadWriteOnce` access when the StorageClass is RWO-only (`storage_custom_rwx: false`, e.g. LVMS). Passes `MM_PLATFORM` and the inference Gateway to `model-manager`. |
@@ -39,17 +41,29 @@ detects. Nothing in `global_config.yaml` or `models.yaml` changes between platfo
 ## Deploy a model
 
 `model-manager` detects the platform on every run, before it renders anything. So the
-commands are the same as in [Deploy a Model](deploy_models.md):
+commands are the same as in [Deploy a Model](../getting-started/deploy-models.md). Run them from the Toolkit
+Manager folder:
 
-```bash
-cd model_manager
-export KUBECONFIG=~/.kube/config
-export MM_CONFIG=../env/ocp/models.yaml              # or wherever your catalog lives
-export MM_GLOBAL_CONFIG=../env/ocp/global_config.yaml # for the inference hostname
+1. Point `kubectl` at the OpenShift cluster. On OpenShift the cluster is your own, so the
+   environment has no `kubeconfig.yaml` of its own:
 
-./model-manager deploy qwen3-0-6b --dry-run          # look at what is rendered
-./model-manager deploy qwen3-0-6b --wait
-```
+   ```bash
+   export KUBECONFIG=~/.kube/config     # the kubeconfig set as existing_kubernetes
+   ```
+
+2. Pick the environment and look at what would be deployed. `TKM_ENV` tells the
+   `./model-manager` wrapper to use `env/ocp/` (its `global_config.yaml`,
+   `config.inference.yaml` and `models.yaml`):
+
+   ```bash
+   TKM_ENV=ocp ./model-manager deploy qwen3-0-6b --dry-run
+   ```
+
+3. Deploy it:
+
+   ```bash
+   TKM_ENV=ocp ./model-manager deploy qwen3-0-6b --wait
+   ```
 
 What changes on OpenShift:
 
@@ -57,7 +71,7 @@ What changes on OpenShift:
 |---|---|---|
 | Platform | `MM_PLATFORM=kubernetes` | `MM_PLATFORM=openshift`. Detected from the `config.openshift.io` ClusterVersion API, or set explicitly. |
 | LLMInferenceService API | `v1alpha2` | The newest version the cluster serves: OpenShift AI 3.3 serves only `v1alpha1` (`MM_LLMISVC_API_VERSION`). |
-| Gateway | `eg-gateway` plus an AIGatewayRoute | `openshift-ingress/openshift-ai-inference` (`MM_INFERENCE_GATEWAY`, `MM_INFERENCE_GATEWAY_NS`). `MM_AIGATEWAY_ENABLED=false`. |
+| Gateway | `llm-inference/ai-gateway` (the AI gateway behind the `eg-gateway` edge) | `openshift-ingress/openshift-ai-inference` (`MM_INFERENCE_GATEWAY`, `MM_INFERENCE_GATEWAY_NS`). `MM_AIGATEWAY_ENABLED=false`. |
 | vLLM flags | Container `args` | `VLLM_ADDITIONAL_ARGS`, because OpenShift AI's template starts vLLM itself. `--served-model-name` becomes `spec.model.name`. The probes use HTTPS (vLLM serves TLS). |
 | Pod UIDs | Pinned `runAsUser` / `runAsGroup` / `fsGroup` | Dropped, because the `restricted-v2` SCC assigns them from the namespace's range. |
 | CPU balloon | Pod annotation | The `kserve.io/component=workload` label. v1alpha1 puts the policy's annotations on the LLMInferenceService itself, not on its pods. |
@@ -82,7 +96,7 @@ only when the `*.apps` hostnames don't resolve from your machine.
 # The token script reads the client secret from the cluster and finds the router
 # itself (MM_GATEWAY_IP overrides it). It exports TOKEN and GATEWAY_IP, which is
 # empty when the *.apps DNS is all there is: then --resolve is left out.
-source model_manager/scripts/get-keycloak-token.sh
+source ./ext/enterprise.ai-inference/model_manager/scripts/get-keycloak-token.sh
 
 H=inference.<domain>
 curl -s --noproxy '*' --cacert env/ocp/logs/ai-solutions-ca.crt \
@@ -108,7 +122,7 @@ Response codes: no token or an invalid one gives `401`, and a valid one `200`.
 
 | Gap | Today |
 |-----|-------|
-| OpenVINO models | Not supported: OpenShift AI's `LLMInferenceService` template starts vLLM itself, so model-manager stops an OpenVINO deploy there. |
+| OpenVINO and `vllm-xpu` models | Not supported: OpenShift AI's `LLMInferenceService` template starts vLLM itself, so model-manager stops a deploy whose runtime brings its own container (OpenVINO, `vllm-xpu`). |
 | TP2+ balloons | On v1alpha1 every model pod matches by label into `model-balloon-tp1`, so models with more than one NUMA node per replica don't get their own balloon type. |
 | LiteLLM, vLLM Semantic Router | Not supported: both reach the models through the Envoy AI Gateway, which OpenShift does not get. The install stops with `auth_type: litellm_vkey`, `litellm_enabled` or `vllm_sr_enabled`. |
 | Unified `/v1` endpoint | Not available, because there is no AI gateway. Clients (e.g. eRAG) need the per-model URL. |
@@ -117,7 +131,7 @@ Response codes: no token or an invalid one gives `401`, and a valid one `200`.
 
 ## Related Docs
 
-- [Deploy a Model](deploy_models.md): every `model-manager` command
-- [Accessing Models](accessing_models.md): endpoints and credentials on Kubernetes
-- [CPU Pinning & NUMA](../reference/cpu_pinning.md): the balloons policy
-- [Deploy on OpenShift (platform)](https://github.com/intel/enterprise-ai-solutions/blob/main/docs/deploy/openshift.md): prerequisites and the platform layer
+- [Deploy a Model](../getting-started/deploy-models.md): every `model-manager` command
+- [Accessing Models](../getting-started/accessing-models.md): endpoints and credentials on Kubernetes
+- [CPU Pinning & NUMA](../reference/cpu-pinning.md): the balloons policy
+- [Deploy on OpenShift (platform)](https://github.com/intel/toolkit-manager/blob/main/docs/deployment/openshift.md): prerequisites and the platform layer

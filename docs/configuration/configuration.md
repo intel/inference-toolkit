@@ -1,5 +1,7 @@
 # Configuration
 
+[← Docs index](../README.md)
+
 ## What is this?
 
 `config.yaml` at this repo's root holds the settings for **Intel® Inference Toolkit** —
@@ -15,7 +17,7 @@ loads that copy as Ansible extra vars:
 
 ### How it fits together
 
-Three levels, each overriding the one before it:
+Each level overrides the one before it:
 
 ```
 roles/<name>/defaults/main.yaml     role defaults — the baseline
@@ -23,6 +25,8 @@ roles/<name>/defaults/main.yaml     role defaults — the baseline
 env/<name>/config.inference.yaml    toolkit settings (auth_type, litellm_*, …)
         ↓
 env/<name>/global_config.yaml       Toolkit Manager settings (base_domain_name, …)
+        ↓
+env/<name>/nodes.yaml               the node list
         ↓
 -e on the command line              one-off override
 ```
@@ -32,7 +36,7 @@ env/<name>/global_config.yaml       Toolkit Manager settings (base_domain_name, 
 > `env/<name>/config.inference.yaml` for one environment's inference settings, such
 > as `auth_type`. Toolkit Manager settings — domain, storage — belong in
 > `env/<name>/global_config.yaml`. See the
-> [Toolkit Manager configuration reference](https://github.com/intel/enterprise-ai-solutions/blob/main/docs/customize/configuration.md).
+> [Toolkit Manager configuration reference](https://github.com/intel/toolkit-manager/blob/main/docs/configuration/configuration.md).
 
 ### Do I need to change anything?
 
@@ -40,7 +44,6 @@ No. The defaults deploy a working inference stack. Reach for this file when:
 
 | If you want to… | Change |
 |---|---|
-| Use agentgateway instead of Envoy AI Gateway | `ai_gateway_provider: "agentgateway"` |
 | Authenticate API clients with LiteLLM virtual keys | `auth_type: "litellm_vkey"` |
 | Add LiteLLM alongside Keycloak JWT auth | `litellm_enabled: true` |
 | Turn the content-safety guardrail off (on with `litellm_vkey`) | `guardrails_enabled: false` |
@@ -53,31 +56,17 @@ No. The defaults deploy a working inference stack. Reach for this file when:
 | Change a service hostname | `inference_hostname`, `litellm_hostname`, `langfuse_hostname` |
 | Change CPU pinning behaviour | `kubernetes_cpu_policy` |
 | Serve models from a different namespace | `llm_services_namespace` |
+| Make the shared model volume bigger | `llm_services_model_store_size` |
 
 ## AI gateway
 
-Which in-cluster AI gateway sits behind the edge gateway and dispatches to the KServe
-model backends. Both speak the OpenAI protocol on the same unified URL and route to
-`InferencePool`/`Service` backends — only the data plane and CRDs differ.
+Envoy AI Gateway sits behind the edge gateway and dispatches requests to the KServe
+model backends (`AIGatewayRoute` CRDs, EPP endpoint picker), on one OpenAI-compatible URL.
 
 ```yaml
-ai_gateway_provider: "envoy"          # envoy | agentgateway
-```
-
-| Value | What it deploys |
-|---|---|
-| `envoy` (default) | Envoy AI Gateway — `AIGatewayRoute` CRDs, EPP endpoint picker |
-| `agentgateway` | agentgateway — native Gateway API `HTTPRoute` → `InferencePool`, plus MCP / A2A support for Intel® Agent Toolkit |
-
-```yaml
-# Envoy AI Gateway (when ai_gateway_provider=envoy). Unset, it follows the
-# platform Envoy Gateway: 1.9 → 1.2.0, 1.8 → 1.1.0, 1.7 → 0.6.0.
+# Unset, it follows the platform Envoy Gateway: 1.9 → 1.2.1, 1.8 → 1.1.0, 1.7 → 0.6.0.
 # envoy_ai_gateway_version: "1.2.1"
 envoy_ai_gateway_namespace: "envoy-ai-gateway-system"
-
-# agentgateway (when ai_gateway_provider=agentgateway)
-# agentgateway_version: "1.3.1"
-# agentgateway_namespace: "agentgateway-system"
 ```
 
 ## Hostnames
@@ -87,14 +76,15 @@ Every hostname defaults to a prefix on Toolkit Manager's `base_domain_name`.
 | Setting | Default | Serves |
 |---|---|---|
 | `inference_hostname` | `inference.<base_domain_name>` | Model API with `auth_type: jwt` |
-| `inference_prefix` | `inference` | Prefix used when `inference_hostname` is unset |
 | `litellm_hostname` | `litellm.<base_domain_name>` | LiteLLM API (the model API with `auth_type: litellm_vkey`) |
+| `litellm_ui_hostname` | `litellm-ui.<base_domain_name>` | LiteLLM admin UI (Keycloak sign-in) |
 | `langfuse_hostname` | `langfuse.<base_domain_name>` | Langfuse UI |
 | `vllm_sr_dashboard_hostname` | `vllm-sr.<base_domain_name>` | vLLM Semantic Router dashboard (when enabled) |
 
 > [!NOTE]
-> The two auth modes serve on **different** hostnames. See
-> [Accessing Models](../deploy/accessing_models.md).
+> The two auth modes serve on **different** hostnames. With `routing_mode: path` in
+> `global_config.yaml` the hosts are not used: the APIs are `<base_domain_name>/inference/v1`
+> and `<base_domain_name>/litellm/v1`. See [Accessing Models](../getting-started/accessing-models.md).
 
 ## Keycloak
 
@@ -117,14 +107,16 @@ keycloak_client_id: "inference-client"
 ## KServe
 
 ```yaml
-# kserve_version: "0.15.1"
+# kserve_version: "0.18.0"          # default: 0.18.0, or 0.21.0 with envoy_gateway_upgrade: true
 # kserve_deploy_mode: "Standard"     # Standard | Knative
 # kserve_namespace: "kserve"
+# kserve_llmisvc_epp_image: "ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.9.0"
+# kserve_llmisvc_tokenizer_image: "ghcr.io/llm-d/llm-d-uds-tokenizer:vllm-v0.19.1"
 ```
 
 KServe runs in **Standard** mode — direct pod-based serving. It requires cert-manager and
-Envoy Gateway, both installed by Toolkit Manager. Standard is the validated and
-supported mode.
+Envoy Gateway, both installed by Toolkit Manager. Standard is the only mode the install
+supports. KServe 0.21 (with `envoy_gateway_upgrade: true`) is needed for model autoscaling.
 
 ## LiteLLM and Langfuse
 
@@ -139,18 +131,23 @@ LiteLLM is always deployed with `auth_type: litellm_vkey`, and optional with `jw
 # litellm_namespace: "litellm"
 # litellm_cache_enabled: true
 # litellm_cache_ttl: 600
+# litellm_allow_pod_network: true            # with Istio: let callers outside the mesh reach LiteLLM
+# litellm_allowed_source_cidrs: ["<cidr>"]   # explicit source ranges instead of the pod network
 
 # langfuse_namespace: "langfuse"
 # langfuse_admin_email: "admin@<base_domain_name>"
-# langfuse_admin_password: set via the LANGFUSE_ADMIN_PASSWORD env var
+# langfuse_admin_password: "<password>"   # default: random; set before the first install
 ```
 
 The LiteLLM master key is generated at install and stored in the `litellm-master-key`
-secret in the `litellm` namespace. Langfuse's admin password comes from the
-`LANGFUSE_ADMIN_PASSWORD` environment variable, not from this file.
+secret in the `litellm` namespace. Langfuse's admin password is `langfuse_admin_password`
+when set before the first install, otherwise a random 24-character one; either way it is
+stored in the `langfuse-secrets` secret (key `admin_password`) in the `langfuse` namespace,
+and later installs reuse it.
 
 An installed LiteLLM release is left as it is on later installs, except that one whose
-config lacks the guardrail's guard host allowlist is upgraded. `litellm_reconcile: true`
+config lacks the guardrail's guard host allowlist, or (behind an HTTP proxy) whose pod
+`NO_PROXY` lacks the guard's ClusterIP or `127.0.0.1`/`localhost`, is upgraded. `litellm_reconcile: true`
 upgrades it with the current settings — needed after changing the hybrid router or the
 sizing on a running stack.
 
@@ -174,14 +171,15 @@ Both are off by default and leave direct model calls unchanged.
 #   SIMPLE:  [qwen3-4b]
 #   COMPLEX: [qwen3-coder-30b]
 
-# vLLM Semantic Router (ai_gateway_provider: envoy only)
+# vLLM Semantic Router
 # vllm_sr_enabled: true
 # vllm_sr_route_models: [qwen3-4b, qwen3-coder-30b]
 # vllm_sr_litellm_model_name: "semantic-router"   # with auth_type=litellm_vkey
-# vllm_sr_dashboard_enabled: true                 # vllm-sr.<base_domain_name>
+# vllm_sr_config_override: null                   # advanced: full routing config
+# vllm_sr_dashboard_enabled: true                 # default false; vllm-sr.<base_domain_name>
 ```
 
-Details → [Hybrid Router](hybrid-router.md), [vLLM Semantic Router](vllm-semantic-router.md).
+Details → [Hybrid Router](hybrid-router.md), [vLLM Semantic Router](semantic-router.md).
 
 ## CPU policy
 
@@ -209,7 +207,7 @@ Tuning, per policy:
 ```yaml
 # nri-balloons only
 # nri_reserved_cpu_list: ""            # Linux cpuset for system CPUs (auto-sized if empty)
-# nri_deployment_profile: "standard"   # minimal(8) | standard(12) | observability(16) | full(20)
+# nri_deployment_profile: "siblings"   # siblings | minimal(8) | standard(12) | observability(16) | full(20)
 
 # kubelet-static only
 # mm_kubelet_threads_per_core: 1       # set to 1 on an SMT-disabled cluster
@@ -221,12 +219,13 @@ With `full-pcpus-only` enabled (the Toolkit Manager default) a pod's `cpu` reque
 multiple of the SMT width or kubelet rejects it with `SMTAlignmentError`; model-manager
 rounds `cpu` up to satisfy this.
 
-Full detail → [CPU Pinning & NUMA](../reference/cpu_pinning.md).
+Full detail → [CPU Pinning & NUMA](../reference/cpu-pinning.md).
 
 ## LLM services and model deployment
 
 ```yaml
 # llm_services_namespace: "llm-inference"
+# llm_services_model_store_size: "200Gi"   # shared model volume
 # llm_services_deploy_runtimes: true   # deploy namespace-scoped ServingRuntimes
 
 llm_services_deploy_models: false      # run the model auto-deploy phase
@@ -245,8 +244,12 @@ llm_services_deploy_models: false      # run the model auto-deploy phase
 Agent Toolkit sets its default model here. Those models, and the guardrail's guard model
 when the guardrail is on (deployed first), deploy even with `llm_services_deploy_models:
 false`. A name `env/<env>/models.yaml` lacks is taken from the shipped
-`model_manager/models.yaml`; a name neither has is reported — fatal for the guard model, or
-with `model_deploy_strict: true`.
+`model_manager/models.yaml`; a name neither has stops the install. A failed deploy of these
+models stops the install too, whatever `model_deploy_strict` says.
+
+To skip every model deploy for one run, these included, use
+`SKIP_MODEL_DEPLOYMENT=true ./toolkit_manager.sh install inference`; there is no
+`--skip-models` option.
 
 `llm_services_deploy_runtimes` deploys `files/runtimes/*.yaml` as namespace-scoped
 `ServingRuntime`s. These are needed for `InferenceService` CRs only;
@@ -265,17 +268,19 @@ during auto-deploy — e.g. `"--wait-timeout 1800"` to allow longer for large mo
 ```
 
 NFD is installed by the core repo's platform layer (`node_feature_discovery`), not by this
-repo; these settings are read there. On OpenShift it checks the NFD Operator instead.
+repo; these settings are read there, so set them in `global_config.yaml`.
+On OpenShift it checks the NFD Operator instead.
 NFD runs as a DaemonSet and labels every node with its hardware capabilities:
 
 ```
-feature.node.kubernetes.io/cpu-security.amx.enabled=true
+feature.node.kubernetes.io/cpu-cpuid.AMXBF16=true
 feature.node.kubernetes.io/cpu-cpuid.AVX512F=true
 feature.node.kubernetes.io/memory-numa.node_count=2
 ```
 
 model-manager consumes these in `nodeAffinity` rules — notably the catalog's
-`require_amx: true` default, which keeps model pods off nodes without Intel® AMX.
+`require_amx: true` default, which keeps CPU model pods off nodes without Intel® AMX
+(`cpu-cpuid.AMXBF16`).
 Disabling NFD means those affinity rules cannot be satisfied.
 
 ## Environment variables
@@ -285,21 +290,22 @@ Disabling NFD means those affinity rules cannot be satisfied.
 | Variable | Purpose |
 |----------|---------|
 | `HF_TOKEN` | Hugging Face token for gated models |
+| `TKM_ENV` | Environment (`env/<name>/`) the Toolkit Manager `./model-manager` wrapper uses |
 | `MM_CONFIG` | Path to the model catalog (`models.yaml`) |
 | `MM_CHAT_TEMPLATES` | Directory a model's relative `chat_template_file` is read from (default `model_manager/chat-templates`) |
 | `MM_GLOBAL_CONFIG` | Path to Toolkit Manager's `global_config.yaml` |
-| `MM_INFERENCE_HOSTNAME` | Override the resolved endpoint hostname in either auth mode |
+| `MM_INFERENCE_HOSTNAME` | Override the endpoint hostname model-manager prints, in either auth mode |
 | `MM_INFERENCE_GATEWAY` / `MM_INFERENCE_GATEWAY_NS` | Gateway a model's routes attach to (default `ai-gateway` in `llm-inference`) |
 | `MM_INFERENCE_GATEWAY_SVC_NS` | Namespace of that gateway's Service, which LiteLLM calls (default: `MM_INFERENCE_GATEWAY_NS`, else `envoy-gateway-system`) |
 | `MM_CPU_POLICY` | Override `kubernetes_cpu_policy` for one invocation |
 | `MM_NRI_ENABLED` | Set `false` to skip NRI CPU-pinning annotations |
 | `MM_PREFLIGHT` | `warn` — report a placement shortfall (CPU or GPU pre-flight) but proceed |
 | `MM_SKIP_PREFLIGHT` | `1` — skip the placement pre-flight entirely |
-| `MM_NRI_PREFLIGHT` | `warn` — report a capacity shortfall but proceed |
-| `MM_NRI_SKIP_PREFLIGHT` | `1` — skip the capacity check entirely |
+| `MM_NRI_PREFLIGHT` | Older name for `MM_PREFLIGHT`, still accepted |
+| `MM_NRI_SKIP_PREFLIGHT` | `1` — skip only the NRI placement check (the other pre-flight checks still run) |
 | `MM_FORCE_REDEPLOY` | `1` — re-apply a model even if its rendered spec is unchanged |
 | `MM_PREFLIGHT` / `MM_SKIP_PREFLIGHT` | `warn` — report a placement or memory pre-flight failure but proceed / `1` — skip those checks |
 | `MM_HTTP_PROXY` / `MM_HTTPS_PROXY` / `MM_NO_PROXY` | Proxy for reaching Hugging Face (Hub checks, the download job, OVMS pods). `models.yaml` `network:` takes precedence; `HTTP_PROXY` / `http_proxy` etc. are the fallback |
-| `SKIP_MODEL_DEPLOYMENT` | `true` — skip the auto-deploy phase for one install run |
+| `SKIP_MODEL_DEPLOYMENT` | `true` — skip every model deploy (guard and requested models included) for one install run; read by the install, not by model-manager |
 
 Run `./model-manager --help` for the full surface.

@@ -1,5 +1,7 @@
 # Hybrid Router — Intelligent Inference Routing for the LiteLLM Gateway
 
+[← Docs index](../README.md)
+
 The **Hybrid Router** adds cost- and latency-aware model selection to the LiteLLM
 gateway. Clients call a single virtual model (`hybrid-router`); the router
 classifies each request by complexity and dispatches it to the best real model for
@@ -114,6 +116,8 @@ reward         = target_tpt / (target_tpt + time_per_token)     # in (0, 1]
 Failures record a reward of `0`. When `quality_weight > 0`, the reward blends
 efficiency with a quality score:
 `reward = (1 - quality_weight) * efficiency + quality_weight * quality_score`.
+The proxy has no quality signal yet and passes a fixed `quality_score` of `0.5`, so a
+higher `quality_weight` only flattens the reward.
 
 Three bandit algorithms ship (selectable via `bandit`):
 
@@ -191,7 +195,7 @@ Set these in `env/<env>/config.inference.yaml`. They become the virtual model's
 | `hybrid_router_quality_weight` | `quality_weight` | `0.0` | Quality-vs-efficiency blend in `[0, 1]`; `0` = pure efficiency |
 | `hybrid_router_tier_candidates` | `tier_candidates` | `hybrid_router_default_model` for every tier | Map of tier → list of deployed model names |
 | `hybrid_router_tier_boundaries` | `complexity_router_config.tier_boundaries` | `0.15`, `0.35`, `0.60` | `simple_medium`, `medium_complex`, `complex_reasoning` |
-| `hybrid_router_default_model` | `hybrid_router_default_model` | the installed toolkit's default model, else `qwen3-4b` | Fallback model |
+| `hybrid_router_default_model` | `hybrid_router_default_model` | the first model in `llm_services_autodeploy_models` (a solution layer's default model), else `qwen3-4b` | Fallback model |
 | `hybrid_router_model_name` | — | `hybrid-router` | Client-facing virtual model name |
 
 Every model listed in `tier_candidates` / `hybrid_router_default_model` must already be
@@ -291,10 +295,10 @@ gateway.
 Send any request to `model="hybrid-router"` on the LiteLLM API
 (`https://litellm.<base_domain_name>/v1/...`, or `https://<base_domain_name>/litellm/v1/...`
 with `routing_mode: path`; `DOMAIN` and `GATEWAY_IP` as in
-[Accessing Models](../deploy/accessing_models.md)):
+[Accessing Models](../getting-started/accessing-models.md)):
 
 ```bash
-curl -sk --noproxy '*' \
+curl -s --noproxy '*' --cacert env/<env>/logs/ai-solutions-ca.crt \
   --resolve "litellm.${DOMAIN}:443:${GATEWAY_IP}" \
   -H "Authorization: Bearer <LITELLM_KEY>" \
   -H "Content-Type: application/json" \
@@ -302,8 +306,9 @@ curl -sk --noproxy '*' \
   "https://litellm.${DOMAIN}/v1/chat/completions"
 ```
 
-The router classifies the prompt and transparently forwards it. Requests addressed to
-any other model name are unaffected.
+The router classifies the prompt and transparently forwards it; the `model` field of the
+response names the model that answered. Requests addressed to any other model name are
+unaffected.
 
 ---
 

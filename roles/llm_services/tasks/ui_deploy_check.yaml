@@ -1,0 +1,26 @@
+---
+# =============================================================================
+# LLM Services — is the Models page usable? (Headlamp actually installed)
+# =============================================================================
+# headlamp_enabled alone is not enough: Headlamp skips itself on OpenShift and on
+# a BYO cluster until its API server trusts the platform realm.
+
+- name: "llm_services | ui deploy | Headlamp Deployment"
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: headlamp
+    namespace: "{{ headlamp_namespace | default('headlamp') }}"
+  register: __llm_headlamp_deploy
+  when: llm_services_ui_deploy | bool
+
+- name: "llm_services | ui deploy | Use the Models page only with Headlamp"
+  ansible.builtin.set_fact:
+    __llm_ui_deploy: "{{ llm_services_ui_deploy | bool and __llm_headlamp_deploy.resources | default([]) | length > 0 }}"
+
+- name: "llm_services | ui deploy | Headlamp missing"
+  ansible.builtin.debug:
+    msg: >-
+      NOTICE: Headlamp is not installed, so the Models page deploy Jobs are skipped. Once Headlamp is
+      installed, run install inference again to add them.
+  when: llm_services_ui_deploy | bool and not __llm_ui_deploy | bool

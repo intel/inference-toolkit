@@ -24,11 +24,11 @@
           istio.io/dataplane-mode: "ambient"
   when: istio_enabled | default(false) | bool
 
-# On OpenShift the mesh is STRICT (a prerequisite), but the OpenShift AI gateway and
-# the user-workload Prometheus run outside it: they reach the scheduler (ext_proc
-# 9002, metrics 9090) and vLLM (8000) in plain TCP, which ztunnel would refuse. Only
-# those ports accept plain TCP.
-- name: "llm_services | Open the model ports to the OpenShift AI gateway and Prometheus"
+# On OpenShift the mesh is STRICT (a prerequisite), but the OpenShift AI gateway runs
+# outside it: it reaches the scheduler (ext_proc 9002) and vLLM (8000) in plain TCP,
+# which ztunnel would refuse. Only those ports accept plain TCP. The user-workload
+# Prometheus is in the mesh and scrapes with mTLS.
+- name: "llm_services | Open the model ports to the OpenShift AI gateway"
   ansible.builtin.include_role:
     name: istio
     tasks_from: out_of_mesh_exception.yaml
@@ -37,7 +37,7 @@
     istio_out_of_mesh_exception_workloads:
       - name: llminferenceservice-scheduler
         selector: {app.kubernetes.io/component: llminferenceservice-router-scheduler}
-        ports: [9002, 9090]
+        ports: [9002]
       - name: llminferenceservice-workload
         selector: {app.kubernetes.io/component: llminferenceservice-workload}
         ports: [8000]
